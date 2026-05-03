@@ -2,10 +2,15 @@ import Barcode from 'react-barcode';
 
 const Badge = ({ name, position, code }) => {
   return (
-    <div className="w-[85mm] h-[55mm] border-2 border-black bg-white flex flex-col overflow-hidden break-inside-avoid shadow-sm self-center text-left">
+    /* 
+       CRITICAL: Fixed dimensions in mm ensure that 85mm is always 85mm. 
+       We use 'min-w' and 'min-h' to prevent the browser from shrinking them on mobile.
+    */
+    <div className="w-[85mm] h-[55mm] min-w-[85mm] min-h-[55mm] border-2 border-black bg-white flex flex-col overflow-hidden break-inside-avoid shadow-sm self-center text-left">
+      
       {/* Top Branding Strip */}
       <div className="bg-black text-white py-1.5 px-4 text-center">
-        <p className="text-[9px] tracking-[0.3em] font-bold uppercase italic">
+        <p className="text-[9px] tracking-[0.3em] font-bold uppercase italic leading-none">
           Internal Staff Access
         </p>
       </div>
@@ -17,7 +22,7 @@ const Badge = ({ name, position, code }) => {
         </h2>
         <div className="w-12 h-1 bg-black my-2"></div>
         {position ? (
-          <p className="text-lg font-bold text-gray-600 uppercase tracking-tighter text-center">
+          <p className="text-lg font-bold text-gray-600 uppercase tracking-tighter text-center leading-tight">
             {position}
           </p>
         ) : (
