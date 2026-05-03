@@ -2,9 +2,7 @@ import Barcode from 'react-barcode';
 
 const Badge = ({ name, position, code }) => {
   return (
-    /* Physical dimensions: 85mm x 55mm */
-    <div className="w-[85mm] h-[55mm] border-2 border-black bg-white flex flex-col overflow-hidden break-inside-avoid shadow-sm self-center">
-      
+    <div className="w-[85mm] h-[55mm] border-2 border-black bg-white flex flex-col overflow-hidden break-inside-avoid shadow-sm self-center text-left">
       {/* Top Branding Strip */}
       <div className="bg-black text-white py-1.5 px-4 text-center">
         <p className="text-[9px] tracking-[0.3em] font-bold uppercase italic">
@@ -17,11 +15,9 @@ const Badge = ({ name, position, code }) => {
         <h2 className="text-3xl font-black uppercase text-center leading-none text-gray-900 break-words w-full">
           {name}
         </h2>
-        
         <div className="w-12 h-1 bg-black my-2"></div>
-        
         {position ? (
-          <p className="text-lg font-bold text-gray-600 uppercase tracking-tighter">
+          <p className="text-lg font-bold text-gray-600 uppercase tracking-tighter text-center">
             {position}
           </p>
         ) : (
@@ -37,7 +33,7 @@ const Badge = ({ name, position, code }) => {
             format="CODE128" 
             width={1.6}  
             height={50}  
-            displayValue={false} /* Hides numeric code for security */
+            displayValue={false} 
             margin={0}
             background="transparent"
           />
