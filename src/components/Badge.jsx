@@ -2,7 +2,7 @@ import Barcode from 'react-barcode';
 
 const Badge = ({ name, position, code }) => {
   return (
-    /* The outer container set to physical dimensions (85mm x 55mm) */
+    /* Physical dimensions: 85mm x 55mm */
     <div className="w-[85mm] h-[55mm] border-2 border-black bg-white flex flex-col overflow-hidden break-inside-avoid shadow-sm self-center">
       
       {/* Top Branding Strip */}
@@ -18,7 +18,6 @@ const Badge = ({ name, position, code }) => {
           {name}
         </h2>
         
-        {/* Decorative line to fill space and look professional */}
         <div className="w-12 h-1 bg-black my-2"></div>
         
         {position ? (
@@ -26,7 +25,6 @@ const Badge = ({ name, position, code }) => {
             {position}
           </p>
         ) : (
-          /* Empty space maintainer if no position is entered */
           <div className="h-6" />
         )}
       </div>
@@ -37,14 +35,13 @@ const Badge = ({ name, position, code }) => {
           <Barcode 
             value={code} 
             format="CODE128" 
-            width={1.6}  /* Width of the bars */
-            height={50}  /* Height of the bars */
-            displayValue={false} /* SECURE: This hides the numeric code */
+            width={1.6}  
+            height={50}  
+            displayValue={false} /* Hides numeric code for security */
             margin={0}
             background="transparent"
           />
         </div>
-        {/* We omitted the <span>{code}</span> here for privacy */}
       </div>
     </div>
   );
