@@ -50,7 +50,7 @@ function App() {
           />
           <input 
             className="w-full border-2 border-gray-200 p-3 rounded-lg focus:border-blue-500 outline-none" 
-            placeholder="Position" 
+            placeholder="Position (Optional)" 
             value={form.position}
             onChange={e => setForm({...form, position: e.target.value})}
           />
