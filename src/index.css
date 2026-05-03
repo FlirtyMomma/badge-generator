@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  /* You can define custom badge sizes here if you want shortcuts */
+  --size-badge-width: 85mm;
+  --size-badge-height: 55mm;
+  
+  /* Example: Custom brand colours for your store */
+  --color-store-blue: #0044ff;
+}
+
+/* Print-specific tweaks */
+@media print {
+  @page {
+    margin: 0;
+  }
+  body {
+    background-color: white;
+  }
+}
