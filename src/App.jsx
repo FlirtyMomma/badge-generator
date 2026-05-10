@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import Badge from './components/Badge';
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from '@vercel/analytics/react';
 
 function App() {
   // Initialize state from localStorage if it exists
@@ -120,6 +120,7 @@ function App() {
           ))}
         </div>
       </div>
+      <Analytics />
     </div>
   );
 }
