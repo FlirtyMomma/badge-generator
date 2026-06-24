@@ -7,7 +7,7 @@ import Badge from './components/Badge';
 function App() {
   const [mode, setMode] = useState('badges');
 
-  // --- STAFF BADGES STATE (Saved locally on browser) ---
+  // --- STAFF BADGES STATE ---
   const [staff, setStaff] = useState(() => {
     const saved = localStorage.getItem('onebeyond_staff_list');
     return saved ? JSON.parse(saved) : [];
@@ -24,23 +24,19 @@ function App() {
   const [isParsing, setIsParsing] = useState(false);
   const scannerRef = useRef(null);
 
-  // Auto-save staff configurations locally
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-  // Camera Scanner Lifecycle Manager
   useEffect(() => {
     if (mode === 'priceCheck') {
-      // Replace your old scanner config with this one:
       scannerRef.current = new Html5QrcodeScanner(
         "reader", 
         { 
           fps: 12, 
           qrbox: { width: 260, height: 160 },
-          // FORCE PHYSICAL SCANNING BOUNDARIES FOR MOBILE CHIPS
           videoConstraints: {
-            facingMode: "environment", // Default to the back camera
+            facingMode: "environment",
             width: { ideal: 1280 },
             height: { ideal: 720 }
           }
@@ -50,17 +46,17 @@ function App() {
       scannerRef.current.render((text) => lookUpProduct(text), () => {});
     } else {
       if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error("Scanner clear error:", err));
+        scannerRef.current.clear().catch(err => console.error(err));
       }
     }
     return () => {
       if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error("Scanner cleanup error:", err));
+        scannerRef.current.clear().catch(err => console.error(err));
       }
     };
   }, [mode]);
 
-  // LIVE CLOUD PRODUCT LOOKUP
+  // LIVE CLOUD PRODUCT LOOKUP (Now pulls product_code)
   const lookUpProduct = async (barcode) => {
     const cleanBarcode = barcode.trim();
     
@@ -74,14 +70,15 @@ function App() {
       setScannedProduct({
         barcode: data.barcode,
         name: data.description,
+        productCode: data.product_code || 'N/A', // Captures the product code
         price: data.price
       });
     } else {
-      setScannedProduct({ barcode: cleanBarcode, name: "Product Not Found", price: "N/A" });
+      setScannedProduct({ barcode: cleanBarcode, name: "Product Not Found", productCode: 'N/A', price: "N/A" });
     }
   };
 
-  // ADMIN SYSTEM BROADCAST: Parse file and chunk upload to the cloud
+  // ADMIN SYSTEM BROADCAST (Saves product_code column to Supabase)
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -94,25 +91,24 @@ function App() {
       const productArray = [];
 
       lines.forEach((line, index) => {
-        if (index === 0) return; // Skip header line
+        if (index === 0) return; // Skip headers
 
         const columns = line.split(/[,\t]/);
         if (columns.length >= 2) {
-          const barcode = columns[0].trim();
-          const name = columns[1].trim();
+          const barcode = columns[0]?.trim();
+          const name = columns[1]?.trim();
+          const productCode = columns[2]?.trim() || ''; // Extracts column 3
           const price = columns[3] ? `£${parseFloat(columns[3].trim()).toFixed(2)}` : "£0.00";
 
           if (barcode && name) {
-            productArray.push({ barcode, description: name, price });
+            productArray.push({ barcode, description: name, product_code: productCode, price });
           }
         }
       });
 
       try {
-        // 1. Wipe out old centralized rows cleanly
         await supabase.from('store_products').delete().neq('barcode', '0');
 
-        // 2. Batch upload chunks of 200 items to avoid network timeouts
         const chunkArray = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
         const batches = chunkArray(productArray, 200);
 
@@ -140,7 +136,6 @@ function App() {
     }
   };
 
-  // React To Print Setup
   const handlePrint = useReactToPrint({
     contentRef,
     documentTitle: "OneBeyond_Staff_Badges_Sheet",
@@ -167,20 +162,18 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-      {/* Control Interface Card */}
       <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-lg mb-10 border border-gray-200 no-print">
         <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
           <span className="text-[#004aad]">One</span>Beyond Store Hub
         </h1>
         
-        {/* Tab Selection Row */}
         <div className="flex bg-gray-100 p-1 rounded-lg mb-4 text-xs font-bold text-gray-500">
           <button onClick={() => setMode('badges')} className={`flex-1 py-1.5 rounded-md ${mode === 'badges' && 'bg-white text-gray-900 shadow-sm'}`}>Tag Builder</button>
           <button onClick={() => setMode('priceCheck')} className={`flex-1 py-1.5 rounded-md ${mode === 'priceCheck' && 'bg-white text-gray-900 shadow-sm'}`}>Scan Panel</button>
           <button onClick={() => setMode('admin')} className={`flex-1 py-1.5 rounded-md ${mode === 'admin' && 'bg-white text-gray-900 shadow-sm'}`}>DB Master</button>
         </div>
 
-        {/* CONTROLS A: NAME TAG BUILDER FORM */}
+        {/* VIEW A: NAME TAG BUILDER */}
         {mode === 'badges' && (
           <form onSubmit={handleSubmit} className="space-y-3">
             <input className="w-full border p-3 rounded-lg text-sm outline-none focus:border-blue-500" placeholder="Staff Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
@@ -197,7 +190,7 @@ function App() {
           </form>
         )}
 
-        {/* CONTROLS B: INTERACTIVE CAMERA SCANNING WINDOW */}
+        {/* VIEW B: SCAN PANEL (Now displays Product Code nicely) */}
         {mode === 'priceCheck' && (
           <div className="space-y-4">
             <div id="reader" className="overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner"></div>
@@ -207,15 +200,18 @@ function App() {
             </div>
             {scannedProduct && (
               <div className={`p-5 rounded-xl border-2 text-center shadow-inner transition-all duration-300 ${scannedProduct.name === "Product Not Found" ? "bg-red-50 border-red-200 text-red-900" : "bg-blue-50 border-blue-200 text-gray-900"}`}>
-                <p className="text-xs font-mono text-gray-400 mb-1">{scannedProduct.barcode}</p>
-                <h3 className="text-lg font-black uppercase leading-none mb-2">{scannedProduct.name}</h3>
+                <div className="flex justify-between items-center text-[11px] font-mono text-gray-400 mb-2 border-b border-gray-200 pb-1">
+                  <span>BC: {scannedProduct.barcode}</span>
+                  <span>CODE: {scannedProduct.productCode}</span>
+                </div>
+                <h3 className="text-lg font-black uppercase leading-tight mb-2">{scannedProduct.name}</h3>
                 <p className="text-4xl font-black text-[#004aad]">{scannedProduct.price}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* CONTROLS C: SECURE PRICE FILE UPDATE PANEL */}
+        {/* VIEW C: ADMIN ACCESS */}
         {mode === 'admin' && (
           <div className="space-y-4 text-center">
             {!isAdminAuthenticated ? (
@@ -236,7 +232,7 @@ function App() {
         )}
       </div>
 
-      {/* FIXED VISUAL PRINT CANVAS GRID AREA */}
+      {/* VISUAL PRINT GRID */}
       {mode === 'badges' && (
         <div className="flex justify-start md:justify-center overflow-x-auto pb-20 px-4">
           <div ref={contentRef} className="bg-white shadow-2xl p-[10mm] w-[210mm] min-w-[210mm] min-h-[297mm] grid grid-cols-2 gap-x-4 gap-y-6 content-start">
@@ -244,8 +240,8 @@ function App() {
               <div key={person.id} className="relative group flex justify-center w-[85mm] h-[55mm]">
                 <Badge {...person} />
                 <div className="absolute -top-3 -right-2 flex gap-2 no-print">
-                   <button onClick={() => startEdit(person)} className="bg-orange-500 hover:bg-orange-600 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center font-bold">✎</button>
-                   <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center font-bold">✕</button>
+                   <button onClick={() => startEdit(person)} className="bg-orange-500 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center font-bold">✎</button>
+                   <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 text-white w-8 h-8 rounded-full shadow-md flex items-center justify-center font-bold">✕</button>
                 </div>
               </div>
             ))}
