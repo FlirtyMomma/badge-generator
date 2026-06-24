@@ -32,9 +32,19 @@ function App() {
   // Camera Scanner Lifecycle Manager
   useEffect(() => {
     if (mode === 'priceCheck') {
+      // Replace your old scanner config with this one:
       scannerRef.current = new Html5QrcodeScanner(
         "reader", 
-        { fps: 12, qrbox: { width: 260, height: 160 } },
+        { 
+          fps: 12, 
+          qrbox: { width: 260, height: 160 },
+          // FORCE PHYSICAL SCANNING BOUNDARIES FOR MOBILE CHIPS
+          videoConstraints: {
+            facingMode: "environment", // Default to the back camera
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        },
         false
       );
       scannerRef.current.render((text) => lookUpProduct(text), () => {});
