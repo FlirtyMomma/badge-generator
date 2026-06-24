@@ -91,17 +91,23 @@ function App() {
       const productArray = [];
 
       lines.forEach((line, index) => {
-        if (index === 0) return; // Skip headers
+        if (index === 0) return; // Skip header line
 
         const columns = line.split(/[,\t]/);
         if (columns.length >= 2) {
           const barcode = columns[0]?.trim();
           const name = columns[1]?.trim();
-          const productCode = columns[2]?.trim() || ''; // Extracts column 3
+          const productCode = columns[2]?.trim() || ''; 
           const price = columns[3] ? `£${parseFloat(columns[3].trim()).toFixed(2)}` : "£0.00";
 
           if (barcode && name) {
-            productArray.push({ barcode, description: name, product_code: productCode, price });
+            // FIXED: Keys match your exact Supabase table column names (snake_case)
+            productArray.push({ 
+              barcode: barcode, 
+              description: name,     // Matches 'description' column
+              product_code: productCode, // FIXED: Matches 'product_code' column exactly
+              price: price 
+            });
           }
         }
       });
