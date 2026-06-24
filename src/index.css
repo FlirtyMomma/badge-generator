@@ -21,3 +21,50 @@
     background-color: white;
   }
 }
+
+/* Force all text inside the scanner window to be visible */
+#reader, 
+#reader * {
+  color: #ffffff !important;
+  font-family: sans-serif;
+}
+
+/* Style the file/camera switching links nicely */
+#reader a {
+  color: #ffcb05 !important; /* OneBeyond Yellow for links */
+  text-decoration: underline;
+  font-weight: 600;
+  padding: 4px;
+}
+
+/* Style the "Stop Scanning" and "Camera Permission" buttons */
+#reader button {
+  background-color: #004aad !important; /* OneBeyond Blue */
+  color: #ffffff !important;
+  border: none !important;
+  padding: 10px 20px !important;
+  border-radius: 8px !important;
+  font-weight: bold !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  margin: 8px auto !important;
+  cursor: pointer;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+#reader button:active {
+  transform: scale(0.98);
+}
+
+/* Clean up the camera selection dropdown menu */
+#reader select {
+  background-color: #1f2937 !important; /* Dark gray background */
+  color: #ffffff !important;
+  border: 2px solid #4b5563 !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  margin: 10px 0 !important;
+  width: 90%;
+  max-width: 300px;
+  outline: none;
+}
