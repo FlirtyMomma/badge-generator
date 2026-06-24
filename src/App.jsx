@@ -22,14 +22,17 @@ function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [isPaused, setIsPaused] = useState(false); // Tracks if scanner is locked
   const scannerRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
+  // Camera Scanner Lifecycle Manager
   useEffect(() => {
-    if (mode === 'priceCheck') {
+    if (mode === 'priceCheck' && !isPaused) {
+      // Only build and render the scanner if we aren't paused
       scannerRef.current = new Html5QrcodeScanner(
         "reader", 
         { 
@@ -43,20 +46,32 @@ function App() {
         },
         false
       );
-      scannerRef.current.render((text) => lookUpProduct(text), () => {});
+      
+      scannerRef.current.render(
+        (text) => {
+          // Trigger the database lookup
+          lookUpProduct(text);
+          // Lock the scanner immediately to prevent accidental duplicate reads
+          setIsPaused(true);
+        }, 
+        () => {}
+      );
     } else {
+      // Clear scanner instance cleanly if switching tabs or paused
       if (scannerRef.current) {
         scannerRef.current.clear().catch(err => console.error(err));
+        scannerRef.current = null;
       }
     }
+
     return () => {
       if (scannerRef.current) {
         scannerRef.current.clear().catch(err => console.error(err));
       }
     };
-  }, [mode]);
+  }, [mode, isPaused]); // Re-run effect whenever mode or pause status toggles
 
-  // LIVE CLOUD PRODUCT LOOKUP (Now pulls product_code)
+  // LIVE CLOUD PRODUCT LOOKUP
   const lookUpProduct = async (barcode) => {
     const cleanBarcode = barcode.trim();
     
@@ -70,7 +85,7 @@ function App() {
       setScannedProduct({
         barcode: data.barcode,
         name: data.description,
-        productCode: data.product_code || 'N/A', // Captures the product code
+        productCode: data.product_code || 'N/A',
         price: data.price
       });
     } else {
@@ -78,7 +93,7 @@ function App() {
     }
   };
 
-  // ADMIN SYSTEM BROADCAST (Saves product_code column to Supabase)
+  // ADMIN SYSTEM BROADCAST
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -91,7 +106,7 @@ function App() {
       const productArray = [];
 
       lines.forEach((line, index) => {
-        if (index === 0) return; // Skip header line
+        if (index === 0) return;
 
         const columns = line.split(/[,\t]/);
         if (columns.length >= 2) {
@@ -101,11 +116,10 @@ function App() {
           const price = columns[3] ? `£${parseFloat(columns[3].trim()).toFixed(2)}` : "£0.00";
 
           if (barcode && name) {
-            // FIXED: Keys match your exact Supabase table column names (snake_case)
             productArray.push({ 
               barcode: barcode, 
-              description: name,     // Matches 'description' column
-              product_code: productCode, // FIXED: Matches 'product_code' column exactly
+              description: name,     
+              product_code: productCode, 
               price: price 
             });
           }
@@ -196,10 +210,26 @@ function App() {
           </form>
         )}
 
-        {/* VIEW B: SCAN PANEL (Now displays Product Code nicely) */}
+        {/* VIEW B: SCAN PANEL */}
         {mode === 'priceCheck' && (
           <div className="space-y-4">
-            <div id="reader" className="overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner"></div>
+            <div className="relative">
+              {/* The reader window wraps the camera */}
+              <div id="reader" className={`overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner transition-opacity ${isPaused ? 'opacity-40' : 'opacity-100'}`}></div>
+              
+              {/* Overlaid Reset Control triggers when paused */}
+              {isPaused && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-xs">
+                  <button 
+                    onClick={() => { setScannedProduct(null); setIsPaused(false); }} 
+                    className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all active:scale-95 border border-white/20"
+                  >
+                    📷 Scan Next Item
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
               <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
