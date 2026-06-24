@@ -68,3 +68,30 @@
   max-width: 300px;
   outline: none;
 }
+
+/* Constrain the parent scanner wrapper */
+#reader {
+  max-width: 100% !important;
+  height: 200px !important; /* Forces the box to be short and neat */
+  overflow: hidden !important;
+  position: relative;
+  border: 2px solid #004aad !important; /* Accent border matching OneBeyond blue */
+}
+
+/* Force the live video element to fill and crop into our 200px box */
+#reader video {
+  width: 100% !important;
+  height: 200px !important;
+  object-fit: cover !important; /* Crops the edges so it fits without squishing */
+}
+
+/* Shrink the inner scanning region overlay if the library generates one */
+#reader__scan_region {
+  height: 100% !important;
+}
+
+/* Keep the barcode targeting box centered and sharp */
+#reader__dashboard {
+  background-color: #111827 !important; /* Dark slate matching layout */
+  padding: 10px !important;
+}
