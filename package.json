@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "@tailwindcss/vite": "^4.2.4",
     "@vercel/analytics": "^2.0.1",
+    "html5-qrcode": "^2.3.8",
     "react": "^19.2.5",
     "react-barcode": "^1.6.1",
     "react-dom": "^19.2.5",
