@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode'; // Switched to the clean, UI-free engine
 import { supabase } from './supabaseClient';
 import Badge from './components/Badge';
 
@@ -16,71 +16,79 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const contentRef = useRef(null);
 
-  // --- LIVE SHARED PRICE CHECKER STATE ---
+  // --- LIVE PRICE CHECKER STATE ---
   const [scannedProduct, setScannedProduct] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   
-  // Ref handles soft-pausing without breaking the camera stream connection on mobile
-  const isPausedRef = useRef(false); 
+  const [isScanning, setIsScanning] = useState(false); // Tracks if active camera is running
   const [uiPaused, setUiPaused] = useState(false); 
-  const scannerRef = useRef(null);
+  const html5QrcodeRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-  // STABLE CAMERA INITIALIZATION
-  useEffect(() => {
-    if (mode === 'priceCheck') {
-      scannerRef.current = new Html5QrcodeScanner(
-        "reader", 
-        { 
-          fps: 10, 
-          qrbox: { width: 260, height: 160 },
-          videoConstraints: {
-            facingMode: { exact: "environment" } // Hard-locks to the main rear camera
-          }
-        },
-        false
-      );
-      
-      scannerRef.current.render(
-        (text) => {
-          if (isPausedRef.current) return;
-
-          // Freeze stream frame evaluation immediately
-          isPausedRef.current = true;
-          setUiPaused(true);
-
-          lookUpProduct(text);
-        }, 
-        () => {}
-      );
-    } else {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error(err));
-        scannerRef.current = null;
+  // ENGINE CAMERA WORKFLOW MANAGER
+  const startCamera = async () => {
+    try {
+      if (!html5QrcodeRef.current) {
+        html5QrcodeRef.current = new Html5Qrcode("reader");
       }
-      isPausedRef.current = false;
-      setUiPaused(false);
+      
+      // If already scanning, don't spin up another track
+      if (html5QrcodeRef.current.isScanning) return;
+
+      await html5QrcodeRef.current.start(
+        { facingMode: { exact: "environment" } }, // Hard-locks to rear camera
+        {
+          fps: 10,
+          qrbox: { width: 260, height: 160 }
+        },
+        (text) => {
+          // On successful scan: turn camera OFF entirely
+          stopCamera();
+          setUiPaused(true);
+          lookUpProduct(text);
+        },
+        () => {} // Quietly ignore frame reading drops
+      );
+      setIsScanning(true);
+    } catch (err) {
+      console.error("Camera failed to start:", err);
+    }
+  };
+
+  const stopCamera = async () => {
+    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
+      try {
+        await html5QrcodeRef.current.stop();
+        setIsScanning(false);
+      } catch (err) {
+        console.error("Camera failed to stop safely:", err);
+      }
+    }
+  };
+
+  // Switch camera on/off depending on the active tab
+  useEffect(() => {
+    if (mode === 'priceCheck' && !uiPaused) {
+      startCamera();
+    } else {
+      stopCamera();
     }
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error(err));
-        scannerRef.current = null;
-      }
+      stopCamera();
     };
-  }, [mode]); 
+  }, [mode, uiPaused]);
 
   // LIVE CLOUD PRODUCT LOOKUP
   const lookUpProduct = async (barcode) => {
     const cleanBarcode = barcode.trim();
-    
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('store_products')
       .select('*')
       .eq('barcode', cleanBarcode)
@@ -112,7 +120,6 @@ function App() {
 
       lines.forEach((line, index) => {
         if (index === 0) return;
-
         const columns = line.split(/[,\t]/);
         if (columns.length >= 2) {
           const barcode = columns[0]?.trim();
@@ -121,30 +128,23 @@ function App() {
           const price = columns[3] ? `£${parseFloat(columns[3].trim()).toFixed(2)}` : "£0.00";
 
           if (barcode && name) {
-            productArray.push({ 
-              barcode: barcode, 
-              description: name,     
-              product_code: productCode, 
-              price: price 
-            });
+            productArray.push({ barcode, description: name, product_code: productCode, price });
           }
         }
       });
 
       try {
         await supabase.from('store_products').delete().neq('barcode', '0');
-
         const chunkArray = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
         const batches = chunkArray(productArray, 200);
 
         for (const batch of batches) {
           await supabase.from('store_products').insert(batch);
         }
-
         alert(`Successfully uploaded ${productArray.length} products to the master live database!`);
       } catch (err) {
         console.error(err);
-        alert("Upload error. Check network console log.");
+        alert("Upload error.");
       } finally {
         setIsParsing(false);
       }
@@ -218,20 +218,45 @@ function App() {
         {/* VIEW B: SCAN PANEL */}
         {mode === 'priceCheck' && (
           <div className="space-y-4">
-            <div className="relative">
-              <div id="reader" className={`overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner transition-opacity ${uiPaused ? 'opacity-30' : 'opacity-100'}`}></div>
+            <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
+              {/* Clean element without any library UI items */}
+              <div id="reader" className="w-full"></div>
               
+              {/* Custom Stop Scanning Button */}
+              {isScanning && !uiPaused && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+                  <button 
+                    onClick={() => stopCamera()} 
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md transition-transform active:scale-95"
+                  >
+                    🛑 Stop Scanning
+                  </button>
+                </div>
+              )}
+
+              {/* Action Prompt - Shows only when camera track is off */}
               {uiPaused && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-xs">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-xs z-20">
                   <button 
                     onClick={() => { 
                       setScannedProduct(null); 
-                      isPausedRef.current = false; 
-                      setUiPaused(false); 
+                      setUiPaused(false); // Setting this to false automatically turns the camera back on
                     }} 
                     className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all active:scale-95 border border-white/20"
                   >
                     📷 Scan Next Item
+                  </button>
+                </div>
+              )}
+
+              {/* If camera is stopped completely manually */}
+              {!isScanning && !uiPaused && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
+                  <button 
+                    onClick={() => startCamera()} 
+                    className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-md hover:bg-blue-800"
+                  >
+                    🎥 Start Scanner
                   </button>
                 </div>
               )}
