@@ -22,26 +22,26 @@ function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
-  const [isPaused, setIsPaused] = useState(false); // Tracks if scanner is locked
+  
+  // Ref handles soft-pausing without breaking the camera stream connection on mobile
+  const isPausedRef = useRef(false); 
+  const [uiPaused, setUiPaused] = useState(false); 
   const scannerRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-  // Camera Scanner Lifecycle Manager
+  // STABLE CAMERA INITIALIZATION
   useEffect(() => {
-    if (mode === 'priceCheck' && !isPaused) {
-      // Only build and render the scanner if we aren't paused
+    if (mode === 'priceCheck') {
       scannerRef.current = new Html5QrcodeScanner(
         "reader", 
         { 
-          fps: 12, 
+          fps: 10, 
           qrbox: { width: 260, height: 160 },
           videoConstraints: {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            facingMode: { exact: "environment" } // Hard-locks to the main rear camera
           }
         },
         false
@@ -49,27 +49,32 @@ function App() {
       
       scannerRef.current.render(
         (text) => {
-          // Trigger the database lookup
+          if (isPausedRef.current) return;
+
+          // Freeze stream frame evaluation immediately
+          isPausedRef.current = true;
+          setUiPaused(true);
+
           lookUpProduct(text);
-          // Lock the scanner immediately to prevent accidental duplicate reads
-          setIsPaused(true);
         }, 
         () => {}
       );
     } else {
-      // Clear scanner instance cleanly if switching tabs or paused
       if (scannerRef.current) {
         scannerRef.current.clear().catch(err => console.error(err));
         scannerRef.current = null;
       }
+      isPausedRef.current = false;
+      setUiPaused(false);
     }
 
     return () => {
       if (scannerRef.current) {
         scannerRef.current.clear().catch(err => console.error(err));
+        scannerRef.current = null;
       }
     };
-  }, [mode, isPaused]); // Re-run effect whenever mode or pause status toggles
+  }, [mode]); 
 
   // LIVE CLOUD PRODUCT LOOKUP
   const lookUpProduct = async (barcode) => {
@@ -214,14 +219,16 @@ function App() {
         {mode === 'priceCheck' && (
           <div className="space-y-4">
             <div className="relative">
-              {/* The reader window wraps the camera */}
-              <div id="reader" className={`overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner transition-opacity ${isPaused ? 'opacity-40' : 'opacity-100'}`}></div>
+              <div id="reader" className={`overflow-hidden rounded-xl border border-gray-200 bg-black shadow-inner transition-opacity ${uiPaused ? 'opacity-30' : 'opacity-100'}`}></div>
               
-              {/* Overlaid Reset Control triggers when paused */}
-              {isPaused && (
+              {uiPaused && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl backdrop-blur-xs">
                   <button 
-                    onClick={() => { setScannedProduct(null); setIsPaused(false); }} 
+                    onClick={() => { 
+                      setScannedProduct(null); 
+                      isPausedRef.current = false; 
+                      setUiPaused(false); 
+                    }} 
                     className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all active:scale-95 border border-white/20"
                   >
                     📷 Scan Next Item

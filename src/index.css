@@ -5,7 +5,7 @@
   --size-badge-width: 85mm;
   --size-badge-height: 55mm;
   
-  /* Example: Custom brand colours for your store */
+  /* Custom brand colours for your store */
   --color-store-blue: #0044ff;
 }
 
@@ -22,13 +22,13 @@
   }
 }
 
-/* --- FIX: BULLETPROOF CAMERA VIEWFINDER AND PERMISSIONS --- */
+/* --- BULLETPROOF SCANNER VIEWFINDER AND PERMISSIONS --- */
 
-/* Flexible initial container so permissions and configuration screens show up */
+/* Flexible container layout lets permissions display correctly for new users */
 #reader {
   max-width: 100% !important;
-  background-color: #111827 !important; /* Dark slate matching layout */
-  border: 2px solid #004aad !important; /* Accent border matching OneBeyond blue */
+  background-color: #111827 !important; 
+  border: 2px solid #004aad !important; 
   border-radius: 12px;
   overflow: hidden;
   position: relative;
@@ -41,17 +41,9 @@
   font-family: sans-serif;
 }
 
-/* Style the file/camera switching links nicely */
-#reader a {
-  color: #ffcb05 !important; /* OneBeyond Yellow for links */
-  text-decoration: underline;
-  font-weight: 600;
-  padding: 4px;
-}
-
 /* Clear, high-contrast action buttons */
 #reader button {
-  background-color: #004aad !important; /* OneBeyond Blue */
+  background-color: #004aad !important; 
   color: #ffffff !important;
   border: none !important;
   padding: 12px 24px !important;
@@ -69,24 +61,11 @@
   transform: scale(0.98);
 }
 
-/* Style selection dropdowns safely */
-#reader select {
-  background-color: #1f2937 !important; /* Dark gray background */
-  color: #ffffff !important;
-  border: 2px solid #4b5563 !important;
-  padding: 8px 12px !important;
-  border-radius: 8px !important;
-  margin: 10px 0 !important;
-  width: 90%;
-  max-width: 300px;
-  outline: none;
-}
-
-/* Constrain ONLY the active video wrapper block once granted */
+/* Constrain ONLY the active video track element once permission is granted */
 #reader video {
   width: 100% !important;
-  height: 200px !important; /* Constrains the viewfinder screen space */
-  object-fit: cover !important; /* Zooms/crops perfectly without distortion */
+  height: 200px !important; 
+  object-fit: cover !important; 
 }
 
 /* Shrink the inner scanning region overlay if the library generates one */
@@ -98,4 +77,18 @@
 #reader__dashboard {
   background-color: #111827 !important; 
   padding: 10px !important;
+}
+
+/* --- HIDDEN INTERFACE UTILITY CONTROLS --- */
+
+/* Hide camera dropdown selection arrays cleanly */
+#reader__camera_selection,
+#reader select {
+  display: none !important;
+}
+
+/* Hide file-based scanning toggles and internal utility links */
+#reader a,
+#reader__dashboard_section_swaplink {
+  display: none !important;
 }
