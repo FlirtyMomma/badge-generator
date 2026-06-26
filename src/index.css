@@ -81,14 +81,22 @@
 
 /* --- HIDDEN INTERFACE UTILITY CONTROLS --- */
 
-/* Hide camera dropdown selection arrays cleanly */
+/* Hide the entire camera picker section (including the "Select Camera" label text and dropdown) */
+#reader__dashboard_section_csr,
 #reader__camera_selection,
 #reader select {
   display: none !important;
 }
 
-/* Hide file-based scanning toggles and internal utility links */
+/* Hide file-based scanning toggles and internal library link options */
 #reader a,
-#reader__dashboard_section_swaplink {
+#reader__dashboard_section_swaplink,
+.html5-qrcode-element:is(a) {
+  display: none !important;
+}
+
+/* Ensure the layout wrapper container doesn't show empty text blocks */
+#reader__dashboard_section_camera_picker,
+#reader__header {
   display: none !important;
 }
