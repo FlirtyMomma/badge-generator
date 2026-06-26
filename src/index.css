@@ -22,6 +22,18 @@
   }
 }
 
+/* --- FIX: BULLETPROOF CAMERA VIEWFINDER AND PERMISSIONS --- */
+
+/* Flexible initial container so permissions and configuration screens show up */
+#reader {
+  max-width: 100% !important;
+  background-color: #111827 !important; /* Dark slate matching layout */
+  border: 2px solid #004aad !important; /* Accent border matching OneBeyond blue */
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
 /* Force all text inside the scanner window to be visible */
 #reader, 
 #reader * {
@@ -37,26 +49,27 @@
   padding: 4px;
 }
 
-/* Style the "Stop Scanning" and "Camera Permission" buttons */
+/* Clear, high-contrast action buttons */
 #reader button {
   background-color: #004aad !important; /* OneBeyond Blue */
   color: #ffffff !important;
   border: none !important;
-  padding: 10px 20px !important;
+  padding: 12px 24px !important;
   border-radius: 8px !important;
   font-weight: bold !important;
   text-transform: uppercase !important;
   letter-spacing: 0.05em !important;
-  margin: 8px auto !important;
+  margin: 12px auto !important;
   cursor: pointer;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  display: inline-block;
 }
 
 #reader button:active {
   transform: scale(0.98);
 }
 
-/* Clean up the camera selection dropdown menu */
+/* Style selection dropdowns safely */
 #reader select {
   background-color: #1f2937 !important; /* Dark gray background */
   color: #ffffff !important;
@@ -69,20 +82,11 @@
   outline: none;
 }
 
-/* Constrain the parent scanner wrapper */
-#reader {
-  max-width: 100% !important;
-  height: 200px !important; /* Forces the box to be short and neat */
-  overflow: hidden !important;
-  position: relative;
-  border: 2px solid #004aad !important; /* Accent border matching OneBeyond blue */
-}
-
-/* Force the live video element to fill and crop into our 200px box */
+/* Constrain ONLY the active video wrapper block once granted */
 #reader video {
   width: 100% !important;
-  height: 200px !important;
-  object-fit: cover !important; /* Crops the edges so it fits without squishing */
+  height: 200px !important; /* Constrains the viewfinder screen space */
+  object-fit: cover !important; /* Zooms/crops perfectly without distortion */
 }
 
 /* Shrink the inner scanning region overlay if the library generates one */
@@ -92,6 +96,6 @@
 
 /* Keep the barcode targeting box centered and sharp */
 #reader__dashboard {
-  background-color: #111827 !important; /* Dark slate matching layout */
+  background-color: #111827 !important; 
   padding: 10px !important;
 }
