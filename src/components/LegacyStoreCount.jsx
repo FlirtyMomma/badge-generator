@@ -15,11 +15,20 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   const [sessionList, setSessionList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- FILTERING & SEARCHING STATE ---
+  const [viewSeason, setViewSeason] = useState('Mothers Day');
+  const [viewPallet, setViewPallet] = useState('All');
+  const [searchQuery, setSearchQuery] = useState(''); // Tracks live text filter queries
+
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
   useEffect(() => {
+    setViewSeason(season);
+  }, [season]);
+
+  useEffect(() => {
     if (session) fetchStoreSeasonCounts();
-  }, [season, session]);
+  }, [viewSeason, session]);
 
   useEffect(() => {
     if (session) localStorage.setItem(`onebeyond_last_pallet_${session.user.id}`, pallet);
@@ -27,7 +36,9 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const startCamera = async () => {
     try {
-      if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
+      if (!html5QrcodeRef.current) {
+        html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
+      }
       if (html5QrcodeRef.current.isScanning) return;
 
       await html5QrcodeRef.current.start(
@@ -42,7 +53,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           }
         },
         (text) => {
-          // Locks stream matching standard core scanning mechanics
           stopCamera();
           setUiPaused(true);
           lookUpProduct(text);
@@ -55,18 +65,16 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     }
   };
 
-  const stopCamera = async () => {
-// Fixes the camera boot hook to watch the tab 'mode' and 'uiPaused' states
-    useEffect(() => {
-        if (mode === 'legacy' && !uiPaused) {
-        startCamera();
-        } else {
-        stopCamera();
-        }
-        return () => {
-        stopCamera();
-        };
-    }, [mode, uiPaused]);
+const stopCamera = async () => {
+    // FIXED: Uses the correct library state check to make sure it safely shuts down the track
+    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
+      try {
+        await html5QrcodeRef.current.stop();
+        setIsScanning(false);
+      } catch (err) {
+        console.error("Legacy camera failed to stop safely:", err);
+      }
+    }
   };
 
   useEffect(() => {
@@ -80,7 +88,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       .from('legacy_stock_counts')
       .select('*')
       .eq('user_id', session.user.id)
-      .eq('season_type', season)
+      .eq('season_type', viewSeason)
       .order('created_at', { ascending: false });
 
     if (data) setSessionList(data);
@@ -128,21 +136,39 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     }
   };
 
+  // --- REFINED FILTER & RUNTIME SEARCH MATRIX COMPUTATION ---
+  const uniquePalletsInSeason = ['All', ...new Set(sessionList.map(item => item.pallet_number))].sort((a, b) => a - b);
+
+  const filteredDisplayList = sessionList.filter(item => {
+    // 1. Evaluate Pallet Criteria
+    const matchesPallet = viewPallet === 'All' || item.pallet_number === viewPallet;
+    
+    // 2. Evaluate Text Search Box Criteria (Fuzzy matches Description or exact Barcodes)
+    const cleanQuery = searchQuery.trim().toLowerCase();
+    const matchesSearch = !cleanQuery || 
+      item.product_name.toLowerCase().includes(cleanQuery) || 
+      item.barcode.includes(cleanQuery);
+
+    return matchesPallet && matchesSearch;
+  });
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
+      {/* 1. Active Scanning Configurations Box */}
+      <div className="grid grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
         <div>
-          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Season Target</label>
+          <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Scan Season</label>
           <select value={season} onChange={e => setSeason(e.target.value)} className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-700 outline-none">
             {seasonsList.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">Pallet Reference</label>
+          <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Active Pallet #</label>
           <input type="text" value={pallet} onChange={e => setPallet(e.target.value)} className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-700 text-center outline-none" />
         </div>
       </div>
 
+      {/* 2. Unified Hardware Scanner Frame Viewport */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="legacy-reader" className="w-full"></div>
         {isScanning && !uiPaused && (
@@ -162,11 +188,13 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         )}
       </div>
 
+      {/* 3. Manual Lookup Input */}
       <div className="flex gap-2">
-        <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
-        <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm">Find</button>
+        <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
+        <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
       </div>
 
+      {/* 4. Quantity Entry Card */}
       {scannedProduct && (
         <form onSubmit={handleCommitItem} className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-center space-y-3">
           <div>
@@ -183,23 +211,99 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         </form>
       )}
 
+      {/* 5. AUDIT & FILTER MATRIX INTERFACE */}
       <div className="pt-4 border-t border-gray-200">
-        <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider mb-2">Logged Audit ({sessionList.length})</h3>
+        <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mb-3 space-y-2.5">
+          <span className="block text-[10px] font-black uppercase text-gray-500 tracking-wider">
+            🔍 Audit Viewer Filters
+          </span>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[9px] font-bold text-gray-400 mb-0.5">View Season</label>
+              <select 
+                value={viewSeason} 
+                onChange={e => { setViewSeason(e.target.value); setViewPallet('All'); }} 
+                className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none"
+              >
+                {seasonsList.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold text-gray-400 mb-0.5">View Pallet</label>
+              <select 
+                value={viewPallet} 
+                onChange={e => setViewPallet(e.target.value)} 
+                className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none"
+              >
+                {uniquePalletsInSeason.map(plt => (
+                  <option key={plt} value={plt}>{plt === 'All' ? 'All Pallets' : `Pallet ${plt}`}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* NEW: Interactive Audit Search Row */}
+          <div>
+            <label className="block text-[9px] font-bold text-gray-400 mb-0.5">Find Item (Name / Barcode)</label>
+            <div className="relative">
+              <input 
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Type keywords or barcode digits..."
+                className="w-full border p-2 pr-7 rounded bg-white text-xs font-medium text-gray-800 outline-none focus:border-blue-500 shadow-xs"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-[10px] font-bold font-sans"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 6. List Display */}
+        <div className="flex justify-between items-center mb-2 px-1">
+          <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider">
+            Logged Items ({filteredDisplayList.length})
+          </h3>
+          <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-0.5 rounded-sm font-bold">
+            Season Total: {sessionList.reduce((acc, item) => acc + item.quantity, 0)}
+          </span>
+        </div>
+
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-          {sessionList.map((item) => (
-            <div key={item.id} onClick={() => handleUpdateQuantity(item.id, item.quantity)} className="bg-white border border-gray-200 rounded-lg p-2.5 flex justify-between items-center shadow-xs cursor-pointer hover:bg-orange-50 hover:border-orange-200 group transition-colors">
-              <div className="min-w-0 pr-2">
-                <h4 className="text-xs font-bold text-gray-900 truncate uppercase">{item.product_name}</h4>
-                <div className="text-[9px] font-mono text-gray-400 mt-0.5 flex gap-3">
-                  <span>PLT: <strong className="text-gray-700">{item.pallet_number}</strong></span>
-                  <span>BC: {item.barcode}</span>
+          {filteredDisplayList.length === 0 ? (
+            <p className="text-center text-xs text-gray-400 py-6 italic bg-white rounded-lg border border-dashed">
+              {searchQuery ? "No search results match your criteria." : "No product entries logged for this selection."}
+            </p>
+          ) : (
+            filteredDisplayList.map((item) => (
+              <div 
+                key={item.id} 
+                onClick={() => handleUpdateQuantity(item.id, item.quantity)} 
+                className="bg-white border border-gray-200 rounded-lg p-2.5 flex justify-between items-center shadow-xs cursor-pointer hover:bg-orange-50 hover:border-orange-200 group transition-colors"
+                title="Tap to edit quantity"
+              >
+                <div className="min-w-0 pr-2">
+                  <h4 className="text-xs font-bold text-gray-900 truncate uppercase">{item.product_name}</h4>
+                  <div className="text-[9px] font-mono text-gray-400 mt-0.5 flex gap-3">
+                    <span>PLT: <strong className="text-[#004aad] font-black">{item.pallet_number}</strong></span>
+                    <span>BC: {item.barcode}</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="bg-[#004aad] text-white px-2.5 py-1 rounded text-xs font-black group-hover:bg-orange-600">
+                    x{item.quantity}
+                  </span>
                 </div>
               </div>
-              <div className="text-right flex-shrink-0">
-                <span className="bg-[#004aad] text-white px-2.5 py-1 rounded text-xs font-black group-hover:bg-orange-600">x{item.quantity}</span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
