@@ -31,29 +31,28 @@ function App() {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-  // ENGINE CAMERA WORKFLOW MANAGER
+// ENGINE CAMERA WORKFLOW MANAGER
   const startCamera = async () => {
     try {
       if (!html5QrcodeRef.current) {
         html5QrcodeRef.current = new Html5Qrcode("reader");
       }
       
-      // If already scanning, don't spin up another track
       if (html5QrcodeRef.current.isScanning) return;
 
       await html5QrcodeRef.current.start(
-        { facingMode: { exact: "environment" } }, // Hard-locks to rear camera
+        // FIXED FOR iPHONE: Switched from 'exact' to 'ideal' to trigger the high-focus primary lens array
+        { facingMode: "environment" }, 
         {
-          fps: 10,
+          fps: 15, // Bumped slightly for crisper decoding frames
           qrbox: { width: 260, height: 160 }
         },
         (text) => {
-          // On successful scan: turn camera OFF entirely
           stopCamera();
           setUiPaused(true);
           lookUpProduct(text);
         },
-        () => {} // Quietly ignore frame reading drops
+        () => {} 
       );
       setIsScanning(true);
     } catch (err) {
