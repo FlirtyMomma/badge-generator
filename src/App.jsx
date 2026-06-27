@@ -41,11 +41,17 @@ function App() {
       if (html5QrcodeRef.current.isScanning) return;
 
       await html5QrcodeRef.current.start(
-        // FIXED FOR iPHONE: Switched from 'exact' to 'ideal' to trigger the high-focus primary lens array
         { facingMode: "environment" }, 
         {
-          fps: 15, // Bumped slightly for crisper decoding frames
-          qrbox: { width: 260, height: 160 }
+          fps: 15,
+          qrbox: { width: 260, height: 160 },
+          // FIXED FOR iPHONE BARCODE RESOLUTION:
+          // Forces iOS WebKit to pull a crisp HD stream instead of standard 480p fallback
+          videoConstraints: {
+            width: { ideal: 1920, min: 1080 },
+            height: { ideal: 1080, min: 720 },
+            facingMode: "environment"
+          }
         },
         (text) => {
           stopCamera();
