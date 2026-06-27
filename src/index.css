@@ -23,8 +23,8 @@
 
 #reader {
   max-width: 100% !important;
-  height: 200px !important; /* FIXED: Keeps the container open when the camera stops */
-  background-color: #111827; /* Dark slate background matching layout */
+  height: 200px !important; 
+  background-color: #111827; 
   position: relative;
   display: flex;
   align-items: center;
@@ -35,5 +35,14 @@
 #reader video {
   width: 100% !important;
   height: 200px !important; 
-  object-fit: cover !important; /* Crops the viewfinder window flawlessly */
+  object-fit: cover !important; 
+}
+
+/* Smooth kinetic scrolling layout behavior for mobile batch files */
+div::-webkit-scrollbar {
+  width: 4px;
+}
+div::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
 }

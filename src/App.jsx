@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import { Html5Qrcode } from 'html5-qrcode'; // Switched to the clean, UI-free engine
+import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from './supabaseClient';
 import Badge from './components/Badge';
 
@@ -16,22 +16,33 @@ function App() {
   const [editingId, setEditingId] = useState(null);
   const contentRef = useRef(null);
 
-  // --- LIVE PRICE CHECKER STATE ---
+  // --- LIVE PRICE CHECKER & BATCH STATE ---
   const [scannedProduct, setScannedProduct] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   
-  const [isScanning, setIsScanning] = useState(false); // Tracks if active camera is running
+  const [isScanning, setIsScanning] = useState(false);
   const [uiPaused, setUiPaused] = useState(false); 
   const html5QrcodeRef = useRef(null);
+
+  // New: Core state configuration for saving multiple product streams
+  const [savedProducts, setSavedProducts] = useState(() => {
+    const saved = localStorage.getItem('onebeyond_saved_products');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-// ENGINE CAMERA WORKFLOW MANAGER
+  // Sync saved list to device storage
+  useEffect(() => {
+    localStorage.setItem('onebeyond_saved_products', JSON.stringify(savedProducts));
+  }, [savedProducts]);
+
+  // ENGINE CAMERA WORKFLOW MANAGER
   const startCamera = async () => {
     try {
       if (!html5QrcodeRef.current) {
@@ -45,8 +56,6 @@ function App() {
         {
           fps: 15,
           qrbox: { width: 260, height: 160 },
-          // FIXED FOR iPHONE BARCODE RESOLUTION:
-          // Forces iOS WebKit to pull a crisp HD stream instead of standard 480p fallback
           videoConstraints: {
             width: { ideal: 1920, min: 1080 },
             height: { ideal: 1080, min: 720 },
@@ -77,7 +86,6 @@ function App() {
     }
   };
 
-  // Switch camera on/off depending on the active tab
   useEffect(() => {
     if (mode === 'priceCheck' && !uiPaused) {
       startCamera();
@@ -109,6 +117,36 @@ function App() {
     } else {
       setScannedProduct({ barcode: cleanBarcode, name: "Product Not Found", productCode: 'N/A', price: "N/A" });
     }
+  };
+
+  // Push individual item into tracking log context
+  const handleSaveProduct = () => {
+    if (!scannedProduct) return;
+    
+    // Avoid appending duplicates to the current working list
+    if (savedProducts.some(p => p.barcode === scannedProduct.barcode)) {
+      alert("This product is already in your batch list.");
+      return;
+    }
+
+    setSavedProducts([
+      { ...scannedProduct, savedAt: Date.now() },
+      ...savedProducts
+    ]);
+    
+    // Soft reset UI layer to permit rapid next-action iterations
+    setScannedProduct(null);
+    setUiPaused(false);
+  };
+
+  const handleClearList = () => {
+    if (window.confirm("Are you sure you want to clear your saved product batch?")) {
+      setSavedProducts([]);
+    }
+  };
+
+  const handleRemoveItem = (timestamp) => {
+    setSavedProducts(savedProducts.filter(p => p.savedAt !== timestamp));
   };
 
   // ADMIN SYSTEM BROADCAST
@@ -224,37 +262,33 @@ function App() {
         {mode === 'priceCheck' && (
           <div className="space-y-4">
             <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
-              {/* Clean element without any library UI items */}
               <div id="reader" className="w-full"></div>
               
-              {/* Custom Stop Scanning Button */}
               {isScanning && !uiPaused && (
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
                   <button 
                     onClick={() => stopCamera()} 
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md transition-transform active:scale-95"
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md"
                   >
                     🛑 Stop Scanning
                   </button>
                 </div>
               )}
 
-              {/* Action Prompt - Shows only when camera track is off */}
               {uiPaused && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-xs z-20">
                   <button 
                     onClick={() => { 
                       setScannedProduct(null); 
-                      setUiPaused(false); // Setting this to false automatically turns the camera back on
+                      setUiPaused(false); 
                     }} 
-                    className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all active:scale-95 border border-white/20"
+                    className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all border border-white/20"
                   >
                     📷 Scan Next Item
                   </button>
                 </div>
               )}
 
-              {/* If camera is stopped completely manually */}
               {!isScanning && !uiPaused && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
                   <button 
@@ -271,6 +305,8 @@ function App() {
               <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
               <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
             </div>
+
+            {/* SCAN RESULT PANEL CARD */}
             {scannedProduct && (
               <div className={`p-5 rounded-xl border-2 text-center shadow-inner transition-all duration-300 ${scannedProduct.name === "Product Not Found" ? "bg-red-50 border-red-200 text-red-900" : "bg-blue-50 border-blue-200 text-gray-900"}`}>
                 <div className="flex justify-between items-center text-[11px] font-mono text-gray-400 mb-2 border-b border-gray-200 pb-1">
@@ -278,7 +314,68 @@ function App() {
                   <span>CODE: {scannedProduct.productCode}</span>
                 </div>
                 <h3 className="text-lg font-black uppercase leading-tight mb-2">{scannedProduct.name}</h3>
-                <p className="text-4xl font-black text-[#004aad]">{scannedProduct.price}</p>
+                <p className="text-4xl font-black text-[#004aad] mb-3">{scannedProduct.price}</p>
+                
+                {scannedProduct.name !== "Product Not Found" && (
+                  <button 
+                    onClick={handleSaveProduct}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase py-2.5 px-4 rounded-lg shadow-sm tracking-wide transition-all active:scale-98"
+                  >
+                    💾 Save to Batch List
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* HISTORICAL BATCH STORAGE MATRIX */}
+            {savedProducts.length > 0 && (
+              <div className="pt-4 border-t border-gray-200">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider">
+                    Saved Batch List ({savedProducts.length})
+                  </h3>
+                  <button 
+                    onClick={handleClearList} 
+                    className="text-[11px] text-red-600 font-bold uppercase hover:underline"
+                  >
+                    Clear All
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                  {savedProducts.map((product) => (
+                    <div 
+                      key={product.savedAt} 
+                      className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative flex gap-3 items-center shadow-xs"
+                    >
+                      {/* Live Cloud Rendered Digital Barcode (Ideal for Laser Pricing Guns) */}
+                      <div className="bg-white p-1 border border-gray-200 rounded flex-shrink-0 flex items-center justify-center w-[90px] h-[55px]">
+                        <img 
+                          src={`https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(product.barcode)}&code=Code128&translate-esc=true&quiet=10`}
+                          alt={product.barcode}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+
+                      <div className="flex-grow min-w-0 pr-6">
+                        <h4 className="text-xs font-bold text-gray-900 truncate uppercase tracking-tight">{product.name}</h4>
+                        <div className="text-[10px] font-mono text-gray-400 mt-0.5 flex gap-2">
+                          <span>CD: {product.productCode}</span>
+                          <span>BC: {product.barcode}</span>
+                        </div>
+                        <p className="text-sm font-black text-[#004aad] mt-1">{product.price}</p>
+                      </div>
+
+                      <button 
+                        onClick={() => handleRemoveItem(product.savedAt)}
+                        className="absolute top-2 right-2 text-gray-400 hover:text-red-600 font-bold text-xs p-1"
+                        title="Remove item"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
