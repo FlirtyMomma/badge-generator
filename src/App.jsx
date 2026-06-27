@@ -27,7 +27,45 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
-  // Listen for login/logout auth state state shifts globally
+  const handleLogoutStore = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setStoreId('');
+  };
+
+  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
+  useEffect(() => {
+    if (!session) return; 
+
+    let timeoutId;
+    const INACTIVITY_LIMIT = 15 * 60 * 1000; 
+
+    const resetTimeout = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      timeoutId = setTimeout(() => {
+        handleLogoutStore();
+        alert("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
+      }, INACTIVITY_LIMIT);
+    };
+
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetTimeout);
+    });
+
+    resetTimeout();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetTimeout);
+      });
+    };
+  }, [session]);
+
+  // Listen for login/logout auth state shifts globally
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -62,9 +100,9 @@ function App() {
     setIsLoggingIn(false);
   };
 
-  const handleLogoutStore = async () => {
+  const handleManualLogoutClick = () => {
     if (window.confirm("Log out of this store instance portal?")) {
-      await supabase.auth.signOut();
+      handleLogoutStore();
     }
   };
 
@@ -85,7 +123,7 @@ function App() {
       {session && storeId && (
         <div className="w-full max-w-md xl:max-w-6xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
           <span>🏪 Connected: <strong>{storeId}</strong></span>
-          <button onClick={handleLogoutStore} className="text-red-600 underline hover:text-red-800">Log Out</button>
+          <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
         </div>
       )}
 
@@ -120,7 +158,12 @@ function App() {
                 <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} />
               )}
               {mode === 'admin' && (
-                <DbMaster isAdminAuthenticated={isAdminAuthenticated} setIsAdminAuthenticated={setIsAdminAuthenticated} iParcing={isParsing} setIsParsing={setIsParsing} />
+                <DbMaster 
+                  isAdminAuthenticated={isAdminAuthenticated} 
+                  setIsAdminAuthenticated={setIsAdminAuthenticated} 
+                  isParsing={isParsing} 
+                  setIsParsing={setIsParsing} 
+                />
               )}
             </>
           )}

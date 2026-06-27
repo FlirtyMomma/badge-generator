@@ -15,10 +15,9 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   const [sessionList, setSessionList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- FILTERING & SEARCHING STATE ---
   const [viewSeason, setViewSeason] = useState('Mothers Day');
   const [viewPallet, setViewPallet] = useState('All');
-  const [searchQuery, setSearchQuery] = useState(''); // Tracks live text filter queries
+  const [searchQuery, setSearchQuery] = useState('');
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
@@ -26,8 +25,58 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     setViewSeason(season);
   }, [season]);
 
+  const fetchStoreSeasonCounts = async () => {
+    if (!session?.user?.id) return;
+
+    const { data, error } = await supabase
+      .from('legacy_stock_counts')
+      .select(`
+        id,
+        created_at,
+        pallet_number,
+        barcode,
+        product_name,
+        quantity,
+        store_products (
+          price
+        )
+      `)
+      .eq('user_id', session.user.id)
+      .eq('season_type', viewSeason)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("Fetch failure:", error.message);
+      return;
+    }
+
+    if (data) {
+      const formattedData = data.map(item => {
+        const livePriceString = item.store_products?.price || "£0.00";
+        const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
+        return { ...item, livePriceString, parsedPrice };
+      });
+      setSessionList(formattedData);
+    }
+  };
+
   useEffect(() => {
-    if (session) fetchStoreSeasonCounts();
+    if (!session?.user?.id) return;
+    fetchStoreSeasonCounts();
+
+    const channel = supabase
+      .channel(`legacy_sync_${session.user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'legacy_stock_counts',
+        filter: `user_id=eq.${session.user.id}`
+      }, () => {
+        fetchStoreSeasonCounts();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [viewSeason, session]);
 
   useEffect(() => {
@@ -36,9 +85,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const startCamera = async () => {
     try {
-      if (!html5QrcodeRef.current) {
-        html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
-      }
+      if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
       if (html5QrcodeRef.current.isScanning) return;
 
       await html5QrcodeRef.current.start(
@@ -46,11 +93,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         {
           fps: 15,
           qrbox: { width: 260, height: 160 },
-          videoConstraints: {
-            width: { ideal: 1920, min: 1080 },
-            height: { ideal: 1080, min: 720 },
-            facingMode: "environment"
-          }
+          videoConstraints: { width: { ideal: 1920, min: 1080 }, height: { ideal: 1080, min: 720 }, facingMode: "environment" }
         },
         (text) => {
           stopCamera();
@@ -65,9 +108,8 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     }
   };
 
-const stopCamera = async () => {
-    // FIXED: Uses the correct library state check to make sure it safely shuts down the track
-    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
+  const stopCamera = async () => {
+    if (html5QrcodeRef.current && isScanning) {
       try {
         await html5QrcodeRef.current.stop();
         setIsScanning(false);
@@ -83,40 +125,63 @@ const stopCamera = async () => {
     return () => { stopCamera(); };
   }, [mode, uiPaused]);
 
-  const fetchStoreSeasonCounts = async () => {
-    const { data } = await supabase
-      .from('legacy_stock_counts')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('season_type', viewSeason)
-      .order('created_at', { ascending: false });
-
-    if (data) setSessionList(data);
-  };
-
   const handleCommitItem = async (e) => {
     e.preventDefault();
     if (!scannedProduct || !quantity || parseInt(quantity) <= 0) return;
 
     setIsSubmitting(true);
-    const newRecord = {
-      user_id: session.user.id,
-      season_type: season,
-      pallet_number: pallet,
-      barcode: scannedProduct.barcode,
-      product_name: scannedProduct.name,
-      quantity: parseInt(quantity)
-    };
+    const targetQuantity = parseInt(quantity);
+    const cleanPallet = pallet.trim();
 
-    const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
+    // 1. Check if this exact product is already on this specific pallet for this season
+    const { data: existingRecords, error: checkError } = await supabase
+      .from('legacy_stock_counts')
+      .select('id, quantity')
+      .eq('user_id', session.user.id)
+      .eq('season_type', season)
+      .eq('pallet_number', cleanPallet)
+      .eq('barcode', scannedProduct.barcode);
 
-    if (!error) {
+    if (checkError) {
+      alert("Database lookup error.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    let saveError = null;
+
+    if (existingRecords && existingRecords.length > 0) {
+      // --- MERGE METRIC: Existing item found, update its cumulative quantity ---
+      const existingItem = existingRecords[0];
+      const combinedQuantity = existingItem.quantity + targetQuantity;
+
+      const { error } = await supabase
+        .from('legacy_stock_counts')
+        .update({ quantity: combinedQuantity })
+        .eq('id', existingItem.id);
+      
+      saveError = error;
+    } else {
+      // --- INSERT METRIC: Brand new item combination, log a fresh row ---
+      const newRecord = {
+        user_id: session.user.id,
+        season_type: season,
+        pallet_number: cleanPallet,
+        barcode: scannedProduct.barcode,
+        product_name: scannedProduct.name,
+        quantity: targetQuantity
+      };
+
+      const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
+      saveError = error;
+    }
+
+    if (!saveError) {
       setScannedProduct(null);
       setQuantity('1');
       setUiPaused(false);
-      fetchStoreSeasonCounts();
     } else {
-      alert("Database error.");
+      alert("Database error saving item.");
     }
     setIsSubmitting(false);
   };
@@ -132,29 +197,22 @@ const stopCamera = async () => {
       } else {
         await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
       }
-      fetchStoreSeasonCounts();
     }
   };
 
-  // --- REFINED FILTER & RUNTIME SEARCH MATRIX COMPUTATION ---
   const uniquePalletsInSeason = ['All', ...new Set(sessionList.map(item => item.pallet_number))].sort((a, b) => a - b);
 
   const filteredDisplayList = sessionList.filter(item => {
-    // 1. Evaluate Pallet Criteria
     const matchesPallet = viewPallet === 'All' || item.pallet_number === viewPallet;
-    
-    // 2. Evaluate Text Search Box Criteria (Fuzzy matches Description or exact Barcodes)
     const cleanQuery = searchQuery.trim().toLowerCase();
-    const matchesSearch = !cleanQuery || 
-      item.product_name.toLowerCase().includes(cleanQuery) || 
-      item.barcode.includes(cleanQuery);
-
-    return matchesPallet && matchesSearch;
+    return matchesPallet && (!cleanQuery || item.product_name.toLowerCase().includes(cleanQuery) || item.barcode.includes(cleanQuery));
   });
+
+  const filteredPalletValue = filteredDisplayList.reduce((acc, item) => acc + (item.parsedPrice * item.quantity), 0);
+  const grandSeasonValue = sessionList.reduce((acc, item) => acc + (item.parsedPrice * item.quantity), 0);
 
   return (
     <div className="space-y-4">
-      {/* 1. Active Scanning Configurations Box */}
       <div className="grid grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
         <div>
           <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Scan Season</label>
@@ -168,7 +226,6 @@ const stopCamera = async () => {
         </div>
       </div>
 
-      {/* 2. Unified Hardware Scanner Frame Viewport */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="legacy-reader" className="w-full"></div>
         {isScanning && !uiPaused && (
@@ -188,13 +245,11 @@ const stopCamera = async () => {
         )}
       </div>
 
-      {/* 3. Manual Lookup Input */}
       <div className="flex gap-2">
         <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
         <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
       </div>
 
-      {/* 4. Quantity Entry Card */}
       {scannedProduct && (
         <form onSubmit={handleCommitItem} className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-center space-y-3">
           <div>
@@ -211,95 +266,67 @@ const stopCamera = async () => {
         </form>
       )}
 
-      {/* 5. AUDIT & FILTER MATRIX INTERFACE */}
       <div className="pt-4 border-t border-gray-200">
         <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mb-3 space-y-2.5">
-          <span className="block text-[10px] font-black uppercase text-gray-500 tracking-wider">
-            🔍 Audit Viewer Filters
-          </span>
-          
+          <span className="block text-[10px] font-black uppercase text-gray-500 tracking-wider">🔍 Audit Viewer Filters</span>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[9px] font-bold text-gray-400 mb-0.5">View Season</label>
-              <select 
-                value={viewSeason} 
-                onChange={e => { setViewSeason(e.target.value); setViewPallet('All'); }} 
-                className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none"
-              >
+              <select value={viewSeason} onChange={e => { setViewSeason(e.target.value); setViewPallet('All'); }} className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none">
                 {seasonsList.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-[9px] font-bold text-gray-400 mb-0.5">View Pallet</label>
-              <select 
-                value={viewPallet} 
-                onChange={e => setViewPallet(e.target.value)} 
-                className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none"
-              >
-                {uniquePalletsInSeason.map(plt => (
-                  <option key={plt} value={plt}>{plt === 'All' ? 'All Pallets' : `Pallet ${plt}`}</option>
-                ))}
+              <select value={viewPallet} onChange={e => setViewPallet(e.target.value)} className="w-full border p-1.5 rounded bg-white text-xs font-bold text-gray-700 outline-none">
+                {uniquePalletsInSeason.map(plt => <option key={plt} value={plt}>{plt === 'All' ? 'All Pallets' : `Pallet ${plt}`}</option>)}
               </select>
             </div>
           </div>
-
-          {/* NEW: Interactive Audit Search Row */}
           <div>
             <label className="block text-[9px] font-bold text-gray-400 mb-0.5">Find Item (Name / Barcode)</label>
             <div className="relative">
-              <input 
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Type keywords or barcode digits..."
-                className="w-full border p-2 pr-7 rounded bg-white text-xs font-medium text-gray-800 outline-none focus:border-blue-500 shadow-xs"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-[10px] font-bold font-sans"
-                >
-                  ✕
-                </button>
-              )}
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Type keywords..." className="w-full border p-2 pr-7 rounded bg-white text-xs font-medium text-gray-800 outline-none focus:border-blue-500 shadow-xs" />
+              {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-[10px] font-bold">✕</button>}
             </div>
           </div>
         </div>
 
-        {/* 6. List Display */}
+        <div className="space-y-1 bg-white p-3 rounded-xl border border-gray-200 mb-3 shadow-xs">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-bold text-gray-500 uppercase">Season Total Value:</span>
+            <span className="font-black text-[#004aad] text-sm">£{grandSeasonValue.toFixed(2)}</span>
+          </div>
+          {viewPallet !== 'All' && (
+            <div className="flex justify-between items-center text-xs pt-1 border-t border-dashed border-gray-100">
+              <span className="font-bold text-gray-500 uppercase">Pallet {viewPallet} Value:</span>
+              <span className="font-black text-emerald-600">£{filteredPalletValue.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-between items-center mb-2 px-1">
-          <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider">
-            Logged Items ({filteredDisplayList.length})
-          </h3>
-          <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-0.5 rounded-sm font-bold">
-            Season Total: {sessionList.reduce((acc, item) => acc + item.quantity, 0)}
-          </span>
+          <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider">Logged Items ({filteredDisplayList.length})</h3>
+          <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-0.5 rounded-sm font-bold">Items: {filteredDisplayList.reduce((acc, item) => acc + item.quantity, 0)}</span>
         </div>
 
         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
           {filteredDisplayList.length === 0 ? (
-            <p className="text-center text-xs text-gray-400 py-6 italic bg-white rounded-lg border border-dashed">
-              {searchQuery ? "No search results match your criteria." : "No product entries logged for this selection."}
-            </p>
+            <p className="text-center text-xs text-gray-400 py-6 italic bg-white rounded-lg border border-dashed">No product entries logged.</p>
           ) : (
             filteredDisplayList.map((item) => (
-              <div 
-                key={item.id} 
-                onClick={() => handleUpdateQuantity(item.id, item.quantity)} 
-                className="bg-white border border-gray-200 rounded-lg p-2.5 flex justify-between items-center shadow-xs cursor-pointer hover:bg-orange-50 hover:border-orange-200 group transition-colors"
-                title="Tap to edit quantity"
-              >
+              <div key={item.id} onClick={() => handleUpdateQuantity(item.id, item.quantity)} className="bg-white border border-gray-200 rounded-lg p-2.5 flex justify-between items-center shadow-xs cursor-pointer hover:bg-orange-50 hover:border-orange-200 group transition-colors">
                 <div className="min-w-0 pr-2">
                   <h4 className="text-xs font-bold text-gray-900 truncate uppercase">{item.product_name}</h4>
                   <div className="text-[9px] font-mono text-gray-400 mt-0.5 flex gap-3">
                     <span>PLT: <strong className="text-[#004aad] font-black">{item.pallet_number}</strong></span>
                     <span>BC: {item.barcode}</span>
+                    <span>Live Each: <strong className="text-gray-600">{item.livePriceString}</strong></span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="bg-[#004aad] text-white px-2.5 py-1 rounded text-xs font-black group-hover:bg-orange-600">
-                    x{item.quantity}
-                  </span>
+                <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
+                  <span className="bg-[#004aad] text-white px-2.5 py-0.5 rounded text-xs font-black group-hover:bg-orange-600">x{item.quantity}</span>
+                  <span className="text-[10px] font-bold text-gray-500">£{(item.parsedPrice * item.quantity).toFixed(2)}</span>
                 </div>
               </div>
             ))
