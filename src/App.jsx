@@ -5,7 +5,11 @@ import { supabase } from './supabaseClient';
 import Badge from './components/Badge';
 
 function App() {
-  const [mode, setMode] = useState('badges');
+  // PERSIST TAB NAVIGATION: Reads the last active tab state from localStorage on boot
+  const [mode, setMode] = useState(() => {
+    const savedTab = localStorage.getItem('onebeyond_active_tab');
+    return savedTab ? savedTab : 'badges';
+  });
 
   // --- STAFF BADGES STATE ---
   const [staff, setStaff] = useState(() => {
@@ -32,8 +36,12 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // New: Tracks which product barcode should be expanded into fullscreen mode
   const [activeZoomBarcode, setActiveZoomBarcode] = useState(null);
+
+  // Sync active navigation tab to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('onebeyond_active_tab', mode);
+  }, [mode]);
 
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
@@ -324,7 +332,6 @@ function App() {
               </div>
             )}
 
-            {/* HISTORICAL BATCH STORAGE MATRIX */}
             {savedProducts.length > 0 && (
               <div className="pt-4 border-t border-gray-200">
                 <div className="flex justify-between items-center mb-3">
@@ -345,7 +352,6 @@ function App() {
                       key={product.savedAt} 
                       className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative flex gap-3 items-center shadow-xs"
                     >
-                      {/* Interactive Barcode Wrapper: Tapping this fires the zoom view modal */}
                       <button 
                         onClick={() => setActiveZoomBarcode(product)}
                         className="bg-white p-1 border border-gray-200 rounded flex-shrink-0 flex items-center justify-center w-[90px] h-[55mm] max-h-[55px] cursor-zoom-in active:bg-gray-100 transition-colors"
@@ -407,9 +413,9 @@ function App() {
       {activeZoomBarcode && (
         <div 
           onClick={() => setActiveZoomBarcode(null)}
-          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-6 backdrop-blur-md animate-fade-in cursor-zoom-out"
+          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-6 backdrop-blur-md cursor-zoom-out"
         >
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl flex flex-col items-center border border-white/10 text-center animate-scale-up" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl flex flex-col items-center border border-white/10 text-center" onClick={(e) => e.stopPropagation()}>
             <p className="text-[11px] font-black text-[#004aad] tracking-widest uppercase mb-1">
               OneBeyond Gun Scanner Target
             </p>
@@ -417,7 +423,6 @@ function App() {
               {activeZoomBarcode.name}
             </h3>
             
-            {/* Massive Barcode Target Window */}
             <div className="bg-white border-2 border-gray-100 rounded-xl p-4 w-full flex items-center justify-center min-h-[140px] shadow-inner mb-4">
               <img 
                 src={`https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(activeZoomBarcode.barcode)}&code=Code128&translate-esc=true&quiet=15`}
@@ -433,7 +438,7 @@ function App() {
 
             <button 
               onClick={() => setActiveZoomBarcode(null)}
-              className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-xl font-bold uppercase text-xs tracking-wider shadow-md transition-transform active:scale-98"
+              className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-xl font-bold uppercase text-xs tracking-wider shadow-md"
             >
               ✕ Close Target View
             </button>
