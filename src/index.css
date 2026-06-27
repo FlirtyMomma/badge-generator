@@ -53,3 +53,17 @@ div::-webkit-scrollbar-thumb {
   height: 200px !important; 
   object-fit: cover !important; 
 }
+
+/* --- LIGHTWEIGHT VIEWFINDER DISPLAY RULES --- */
+
+#reader,
+#legacy-reader {
+  max-width: 100% !important;
+  height: 200px !important; /* FIXED: Prevents container collapse when the legacy camera shuts down */
+  background-color: #111827; /* Dark slate background matching layout */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem; /* Matches your rounded-xl utility styling */
+}
