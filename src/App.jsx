@@ -27,17 +27,18 @@ function App() {
   const [uiPaused, setUiPaused] = useState(false); 
   const html5QrcodeRef = useRef(null);
 
-  // New: Core state configuration for saving multiple product streams
   const [savedProducts, setSavedProducts] = useState(() => {
     const saved = localStorage.getItem('onebeyond_saved_products');
     return saved ? JSON.parse(saved) : [];
   });
 
+  // New: Tracks which product barcode should be expanded into fullscreen mode
+  const [activeZoomBarcode, setActiveZoomBarcode] = useState(null);
+
   useEffect(() => {
     localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
   }, [staff]);
 
-  // Sync saved list to device storage
   useEffect(() => {
     localStorage.setItem('onebeyond_saved_products', JSON.stringify(savedProducts));
   }, [savedProducts]);
@@ -119,11 +120,9 @@ function App() {
     }
   };
 
-  // Push individual item into tracking log context
   const handleSaveProduct = () => {
     if (!scannedProduct) return;
     
-    // Avoid appending duplicates to the current working list
     if (savedProducts.some(p => p.barcode === scannedProduct.barcode)) {
       alert("This product is already in your batch list.");
       return;
@@ -134,7 +133,6 @@ function App() {
       ...savedProducts
     ]);
     
-    // Soft reset UI layer to permit rapid next-action iterations
     setScannedProduct(null);
     setUiPaused(false);
   };
@@ -306,7 +304,6 @@ function App() {
               <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
             </div>
 
-            {/* SCAN RESULT PANEL CARD */}
             {scannedProduct && (
               <div className={`p-5 rounded-xl border-2 text-center shadow-inner transition-all duration-300 ${scannedProduct.name === "Product Not Found" ? "bg-red-50 border-red-200 text-red-900" : "bg-blue-50 border-blue-200 text-gray-900"}`}>
                 <div className="flex justify-between items-center text-[11px] font-mono text-gray-400 mb-2 border-b border-gray-200 pb-1">
@@ -348,14 +345,18 @@ function App() {
                       key={product.savedAt} 
                       className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative flex gap-3 items-center shadow-xs"
                     >
-                      {/* Live Cloud Rendered Digital Barcode (Ideal for Laser Pricing Guns) */}
-                      <div className="bg-white p-1 border border-gray-200 rounded flex-shrink-0 flex items-center justify-center w-[90px] h-[55px]">
+                      {/* Interactive Barcode Wrapper: Tapping this fires the zoom view modal */}
+                      <button 
+                        onClick={() => setActiveZoomBarcode(product)}
+                        className="bg-white p-1 border border-gray-200 rounded flex-shrink-0 flex items-center justify-center w-[90px] h-[55mm] max-h-[55px] cursor-zoom-in active:bg-gray-100 transition-colors"
+                        title="Tap to maximize barcode"
+                      >
                         <img 
                           src={`https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(product.barcode)}&code=Code128&translate-esc=true&quiet=10`}
                           alt={product.barcode}
-                          className="max-w-full max-h-full object-contain"
+                          className="max-w-full max-h-full object-contain pointer-events-none"
                         />
-                      </div>
+                      </button>
 
                       <div className="flex-grow min-w-0 pr-6">
                         <h4 className="text-xs font-bold text-gray-900 truncate uppercase tracking-tight">{product.name}</h4>
@@ -401,6 +402,44 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* FULLSCREEN BARCODE MODAL OVERLAY (LIGHTBOX) */}
+      {activeZoomBarcode && (
+        <div 
+          onClick={() => setActiveZoomBarcode(null)}
+          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-6 backdrop-blur-md animate-fade-in cursor-zoom-out"
+        >
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl flex flex-col items-center border border-white/10 text-center animate-scale-up" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[11px] font-black text-[#004aad] tracking-widest uppercase mb-1">
+              OneBeyond Gun Scanner Target
+            </p>
+            <h3 className="text-base font-black text-gray-900 uppercase leading-tight mb-4 px-2 truncate w-full">
+              {activeZoomBarcode.name}
+            </h3>
+            
+            {/* Massive Barcode Target Window */}
+            <div className="bg-white border-2 border-gray-100 rounded-xl p-4 w-full flex items-center justify-center min-h-[140px] shadow-inner mb-4">
+              <img 
+                src={`https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(activeZoomBarcode.barcode)}&code=Code128&translate-esc=true&quiet=15`}
+                alt={activeZoomBarcode.barcode}
+                className="w-full h-auto max-h-[120px] object-contain select-none"
+              />
+            </div>
+
+            <div className="flex gap-4 justify-center text-xs font-mono text-gray-500 mb-6 bg-gray-50 px-4 py-2 rounded-lg w-full">
+              <span>CODE: <strong className="text-gray-800">{activeZoomBarcode.productCode}</strong></span>
+              <span>PRICE: <strong className="text-[#004aad] font-bold">{activeZoomBarcode.price}</strong></span>
+            </div>
+
+            <button 
+              onClick={() => setActiveZoomBarcode(null)}
+              className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-xl font-bold uppercase text-xs tracking-wider shadow-md transition-transform active:scale-98"
+            >
+              ✕ Close Target View
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* VISUAL PRINT GRID */}
       {mode === 'badges' && (
