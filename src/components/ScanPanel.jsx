@@ -9,7 +9,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   const html5QrcodeRef = useRef(null);
 
   // --- AUDIO feedback FUNCTION ---
-  const playSuccessBeep = () => {
+const playSuccessBeep = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
@@ -21,12 +21,15 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
 
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 950; 
-      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); 
+      // Changed to 'square' wave for a much punchier, louder retail chirp
+      oscillator.type = 'square';
+      oscillator.frequency.value = 1050; // Slightly higher frequency to cut through background noise
+      
+      // Maxed out digital volume ceiling parameter
+      gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
 
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.07); 
+      oscillator.stop(audioCtx.currentTime + 0.08); // 0.08 second burst
     } catch (err) {
       console.warn("Audio feedback context blocked:", err);
     }
