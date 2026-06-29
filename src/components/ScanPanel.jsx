@@ -11,6 +11,12 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   // --- AUDIO feedback FUNCTION ---
 const playSuccessBeep = () => {
     try {
+      // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+
+      // 2. Play the piercing square-wave audio tone
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       
@@ -21,17 +27,14 @@ const playSuccessBeep = () => {
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
 
-      // Changed to 'square' wave for a much punchier, louder retail chirp
       oscillator.type = 'square';
-      oscillator.frequency.value = 1050; // Slightly higher frequency to cut through background noise
-      
-      // Maxed out digital volume ceiling parameter
+      oscillator.frequency.value = 1050; 
       gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
 
       oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.08); // 0.08 second burst
+      oscillator.stop(audioCtx.currentTime + 0.08); 
     } catch (err) {
-      console.warn("Audio feedback context blocked:", err);
+      console.warn("Hardware feedback context blocked:", err);
     }
   };
 

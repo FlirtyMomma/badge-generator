@@ -24,6 +24,12 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   // --- NEW: NATIVE HARDWARE AUDIO FEEDBACK OVERRIDE ---
   const playSuccessBeep = () => {
       try {
+        // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
+        if (navigator.vibrate) {
+          navigator.vibrate(100);
+        }
+
+        // 2. Play the piercing square-wave audio tone
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return;
         
@@ -34,17 +40,14 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
 
-        // Changed to 'square' wave for a much punchier, louder retail chirp
         oscillator.type = 'square';
         oscillator.frequency.value = 1050; 
-        
-        // Maxed out digital volume ceiling parameter
         gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
 
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.08); 
       } catch (err) {
-        console.warn("Audio feedback context blocked or uninitialised:", err);
+        console.warn("Hardware feedback context blocked or uninitialised:", err);
       }
     };
 
