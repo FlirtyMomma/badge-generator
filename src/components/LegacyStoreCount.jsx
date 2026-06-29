@@ -187,18 +187,21 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   };
 
   const handleUpdateQuantity = async (id, currentQty) => {
-    const newQty = prompt("Enter corrected quantity standard:", currentQty);
-    if (newQty === null) return;
-    const parsed = parseInt(newQty);
-    
-    if (!isNaN(parsed) && parsed >= 0) {
-      if (parsed === 0) {
-        await supabase.from('legacy_stock_counts').delete().eq('id', id);
-      } else {
-        await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
+      const newQty = prompt("Enter corrected quantity standard:", currentQty);
+      if (newQty === null) return;
+      const parsed = parseInt(newQty);
+      
+      if (!isNaN(parsed) && parsed >= 0) {
+        if (parsed === 0) {
+          await supabase.from('legacy_stock_counts').delete().eq('id', id);
+        } else {
+          await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
+        }
+        
+        // FIXED: Force a local data refresh immediately so the phone updates without relying solely on the live websocket echo
+        fetchStoreSeasonCounts();
       }
-    }
-  };
+    };
 
   const uniquePalletsInSeason = ['All', ...new Set(sessionList.map(item => item.pallet_number))].sort((a, b) => a - b);
 
