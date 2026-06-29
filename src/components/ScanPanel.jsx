@@ -8,6 +8,30 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   const [uiPaused, setUiPaused] = useState(false);
   const html5QrcodeRef = useRef(null);
 
+  // --- AUDIO feedback FUNCTION ---
+  const playSuccessBeep = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 950; 
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); 
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.07); 
+    } catch (err) {
+      console.warn("Audio feedback context blocked:", err);
+    }
+  };
+
   const startCamera = async () => {
     try {
       if (!html5QrcodeRef.current) {
@@ -27,6 +51,8 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
           }
         },
         (text) => {
+          // Play beep immediately upon scanning matching the legacy count screen
+          playSuccessBeep();
           stopCamera();
           setUiPaused(true);
           lookUpProduct(text);
@@ -110,7 +136,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
       </div>
 
-      {/* Scanned Card UI Popup */}
       {scannedProduct && (
         <div className={`p-5 rounded-xl border-2 text-center shadow-inner transition-all duration-300 ${scannedProduct.name === "Product Not Found" ? "bg-red-50 border-red-200 text-red-900" : "bg-blue-50 border-blue-200 text-gray-900"}`}>
           <div className="flex justify-between items-center text-[11px] font-mono text-gray-400 mb-2 border-b border-gray-200 pb-1">
@@ -127,7 +152,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         </div>
       )}
 
-      {/* Mobile-Only List: Falls back gracefully inside the column on smartphones */}
       <div className="xl:hidden">
         <SavedBatchList 
           savedProducts={savedProducts} 
