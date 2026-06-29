@@ -33,20 +33,46 @@ function App() {
     setStoreId('');
   };
 
-  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
+// --- AUTOMATIC TIME-OUT SECURITY MATRIX WITH ABSOLUTE TIMESTAMP CHECK ---
   useEffect(() => {
     if (!session) return; 
 
     let timeoutId;
     const INACTIVITY_LIMIT = 15 * 60 * 1000; 
 
+    const checkAbsoluteTimeout = () => {
+      const lastActivity = localStorage.getItem('onebeyond_last_activity_time');
+      const now = Date.now();
+
+      // FIXED: If the tab was frozen overnight, this absolute timestamp comparison catches it instantly on wake-up
+      if (lastActivity && (now - parseInt(lastActivity) > INACTIVITY_LIMIT)) {
+        handleLogoutStore();
+        alert("Security Alert: Your store session has expired. Please sign in again.");
+        return true; // Session expired
+      }
+      return false; // Session still valid
+    };
+
     const resetTimeout = () => {
+      // 1. Record the current absolute timestamp to local storage
+      localStorage.setItem('onebeyond_last_activity_time', Date.now().toString());
+
+      // 2. Clear any running frontend countdown loops
       if (timeoutId) clearTimeout(timeoutId);
       
+      // 3. Set the standard rolling frontend timer fallback
       timeoutId = setTimeout(() => {
         handleLogoutStore();
         alert("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
       }, INACTIVITY_LIMIT);
+    };
+
+    // Listen for the browser tab waking back up or coming into view
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const expired = checkAbsoluteTimeout();
+        if (!expired) resetTimeout();
+      }
     };
 
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -54,14 +80,19 @@ function App() {
     activityEvents.forEach(event => {
       window.addEventListener(event, resetTimeout);
     });
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    resetTimeout();
+    // Initial check on mount/boot
+    const wasExpired = checkAbsoluteTimeout();
+    if (!wasExpired) resetTimeout();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
       activityEvents.forEach(event => {
         window.removeEventListener(event, resetTimeout);
       });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [session]);
 
