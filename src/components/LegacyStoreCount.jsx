@@ -21,6 +21,32 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
+  // --- NEW: NATIVE HARDWARE AUDIO FEEDBACK OVERRIDE ---
+  const playSuccessBeep = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      // Standard crisp retail handheld checkout scanner tone parameters
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 950; // High-pitched focus frequency
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); // Comfortable volume cap
+
+      oscillator.start();
+      // Sharp, fast 0.07-second micro-pulse burst
+      oscillator.stop(audioCtx.currentTime + 0.07); 
+    } catch (err) {
+      console.warn("Audio feedback context blocked or uninitialised:", err);
+    }
+  };
+
   useEffect(() => {
     setViewSeason(season);
   }, [season]);
@@ -96,6 +122,8 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           videoConstraints: { width: { ideal: 1920, min: 1080 }, height: { ideal: 1080, min: 720 }, facingMode: "environment" }
         },
         (text) => {
+          // --- UPDATED: Fires the physical hardware notification tone instantly ---
+          playSuccessBeep();
           stopCamera();
           setUiPaused(true);
           lookUpProduct(text);
@@ -133,7 +161,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     const targetQuantity = parseInt(quantity);
     const cleanPallet = pallet.trim();
 
-    // 1. Check if this exact product is already on this specific pallet for this season
     const { data: existingRecords, error: checkError } = await supabase
       .from('legacy_stock_counts')
       .select('id, quantity')
@@ -151,7 +178,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     let saveError = null;
 
     if (existingRecords && existingRecords.length > 0) {
-      // --- MERGE METRIC: Existing item found, update its cumulative quantity ---
       const existingItem = existingRecords[0];
       const combinedQuantity = existingItem.quantity + targetQuantity;
 
@@ -162,7 +188,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       
       saveError = error;
     } else {
-      // --- INSERT METRIC: Brand new item combination, log a fresh row ---
       const newRecord = {
         user_id: session.user.id,
         season_type: season,
@@ -187,21 +212,19 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   };
 
   const handleUpdateQuantity = async (id, currentQty) => {
-      const newQty = prompt("Enter corrected quantity standard:", currentQty);
-      if (newQty === null) return;
-      const parsed = parseInt(newQty);
-      
-      if (!isNaN(parsed) && parsed >= 0) {
-        if (parsed === 0) {
-          await supabase.from('legacy_stock_counts').delete().eq('id', id);
-        } else {
-          await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
-        }
-        
-        // FIXED: Force a local data refresh immediately so the phone updates without relying solely on the live websocket echo
-        fetchStoreSeasonCounts();
+    const newQty = prompt("Enter corrected quantity standard:", currentQty);
+    if (newQty === null) return;
+    const parsed = parseInt(newQty);
+    
+    if (!isNaN(parsed) && parsed >= 0) {
+      if (parsed === 0) {
+        await supabase.from('legacy_stock_counts').delete().eq('id', id);
+      } else {
+        await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
       }
-    };
+      fetchStoreSeasonCounts();
+    }
+  };
 
   const uniquePalletsInSeason = ['All', ...new Set(sessionList.map(item => item.pallet_number))].sort((a, b) => a - b);
 
