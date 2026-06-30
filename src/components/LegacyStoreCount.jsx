@@ -170,62 +170,66 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   }, [mode, uiPaused]);
 
   const handleCommitItem = async (e) => {
-    e.preventDefault();
-    if (!scannedProduct || !quantity || parseInt(quantity) <= 0) return;
+      e.preventDefault();
+      // CRITICAL VALIDATION: Terminate early if the product was not found in the database catalogue
+      if (!scannedProduct || scannedProduct.name === "Product Not Found" || !quantity || parseInt(quantity) <= 0) {
+        alert("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
+        return;
+      }
 
-    setIsSubmitting(true);
-    const targetQuantity = parseInt(quantity);
-    const cleanPallet = pallet.trim();
+      setIsSubmitting(true);
+      const targetQuantity = parseInt(quantity);
+      const cleanPallet = pallet.trim();
 
-    const { data: existingRecords, error: checkError } = await supabase
-      .from('legacy_stock_counts')
-      .select('id, quantity')
-      .eq('user_id', session.user.id)
-      .eq('season_type', season)
-      .eq('pallet_number', cleanPallet)
-      .eq('barcode', scannedProduct.barcode);
-
-    if (checkError) {
-      alert("Database lookup error.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    let saveError = null;
-
-    if (existingRecords && existingRecords.length > 0) {
-      const existingItem = existingRecords[0];
-      const combinedQuantity = existingItem.quantity + targetQuantity;
-
-      const { error } = await supabase
+      const { data: existingRecords, error: checkError } = await supabase
         .from('legacy_stock_counts')
-        .update({ quantity: combinedQuantity })
-        .eq('id', existingItem.id);
-      
-      saveError = error;
-    } else {
-      const newRecord = {
-        user_id: session.user.id,
-        season_type: season,
-        pallet_number: cleanPallet,
-        barcode: scannedProduct.barcode,
-        product_name: scannedProduct.name,
-        quantity: targetQuantity
-      };
+        .select('id, quantity')
+        .eq('user_id', session.user.id)
+        .eq('season_type', season)
+        .eq('pallet_number', cleanPallet)
+        .eq('barcode', scannedProduct.barcode);
 
-      const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
-      saveError = error;
-    }
+      if (checkError) {
+        alert("Database lookup error.");
+        setIsSubmitting(false);
+        return;
+      }
 
-    if (!saveError) {
-      setScannedProduct(null);
-      setQuantity('1');
-      setUiPaused(false);
-    } else {
-      alert("Database error saving item.");
-    }
-    setIsSubmitting(false);
-  };
+      let saveError = null;
+
+      if (existingRecords && existingRecords.length > 0) {
+        const existingItem = existingRecords[0];
+        const combinedQuantity = existingItem.quantity + targetQuantity;
+
+        const { error } = await supabase
+          .from('legacy_stock_counts')
+          .update({ quantity: combinedQuantity })
+          .eq('id', existingItem.id);
+        
+        saveError = error;
+      } else {
+        const newRecord = {
+          user_id: session.user.id,
+          season_type: season,
+          pallet_number: cleanPallet,
+          barcode: scannedProduct.barcode,
+          product_name: scannedProduct.name,
+          quantity: targetQuantity
+        };
+
+        const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
+        saveError = error;
+      }
+
+      if (!saveError) {
+        setScannedProduct(null);
+        setQuantity('1');
+        setUiPaused(false);
+      } else {
+        alert("Database error saving item.");
+      }
+      setIsSubmitting(false);
+    };
 
   const handleUpdateQuantity = async (id, currentQty) => {
     const newQty = prompt("Enter corrected quantity standard:", currentQty);
