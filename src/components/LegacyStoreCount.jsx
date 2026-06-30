@@ -21,35 +21,28 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-  // --- NEW: NATIVE HARDWARE AUDIO FEEDBACK OVERRIDE ---
   const playSuccessBeep = () => {
-      try {
-        // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
-        if (navigator.vibrate) {
-          navigator.vibrate(100);
-        }
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
 
-        // 2. Play the piercing square-wave audio tone
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const audioCtx = new AudioContext();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
 
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 950; 
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); 
 
-        oscillator.type = 'square';
-        oscillator.frequency.value = 1050; 
-        gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
-
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.08); 
-      } catch (err) {
-        console.warn("Hardware feedback context blocked or uninitialised:", err);
-      }
-    };
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.07); 
+    } catch (err) {
+      console.warn("Audio feedback context blocked or uninitialised:", err);
+    }
+  };
 
   useEffect(() => {
     setViewSeason(season);
@@ -58,7 +51,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   const fetchStoreSeasonCounts = async () => {
     if (!session?.user?.id) return;
 
-    // Pull raw counts directly without letting an empty product link wipe out the row
     const { data: countsData, error: countsError } = await supabase
       .from('legacy_stock_counts')
       .select('id, created_at, pallet_number, barcode, product_name, quantity')
@@ -132,7 +124,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           videoConstraints: { width: { ideal: 1920, min: 1080 }, height: { ideal: 1080, min: 720 }, facingMode: "environment" }
         },
         (text) => {
-          // --- UPDATED: Fires the physical hardware notification tone instantly ---
           playSuccessBeep();
           stopCamera();
           setUiPaused(true);

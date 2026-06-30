@@ -8,10 +8,7 @@ export default function AdminLegacyDashboard() {
   const [selectedSeason, setSelectedSeason] = useState('All');
   const [selectedPallet, setSelectedPallet] = useState('All');
   const [loading, setLoading] = useState(true);
-  
-  // DIAGNOSTIC STATE FIELDS
   const [diagnosticLog, setDiagnosticLog] = useState('');
-  const [rawCountsCount, setRawCountsCount] = useState(0);
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
@@ -23,84 +20,50 @@ export default function AdminLegacyDashboard() {
     setLoading(true);
     let logStr = "--- System Diagnostics ---\n";
 
-    // TEST 1: Pull raw counts with zero relational joins
-    const { data: rawCounts, error: err1 } = await supabase
+    // Step 1: Fetch raw stock logs safely with zero complex joins
+    const { data: countsData, error: countsError } = await supabase
       .from('legacy_stock_counts')
-      .select('*');
-
-    if (err1) {
-      logStr += `❌ Test 1 Failed (Raw Select Error): ${err1.message}\n`;
-    } else {
-      logStr += `✅ Test 1 Passed: Found ${rawCounts?.length || 0} rows in legacy_stock_counts table.\n`;
-      setRawCountsCount(rawCounts?.length || 0);
-    }
-
-    // TEST 2: Check active user identity
-    const { data: authUser } = await supabase.auth.getUser();
-    if (authUser?.user) {
-      logStr += `👤 Active Admin Auth ID: ${authUser.user.id}\n`;
-      
-      // TEST 3: Check if this user is actually an admin in store_profiles
-      const { data: profile, error: err3 } = await supabase
-        .from('store_profiles')
-        .select('*')
-        .eq('id', authUser.user.id)
-        .single();
-
-      if (err3) {
-        logStr += `❌ Test 3 Failed (Profile Look-up Error): ${err3.message}\n`;
-      } else {
-        logStr += `📊 Profile row matches: StoreID: ${profile.store_id}, IsAdmin: ${profile.is_admin}\n`;
-      }
-    } else {
-      logStr += `❌ Active Auth ID: No user session found.\n`;
-    }
-
-    setDiagnosticLog(logStr);
-
-    // FIXED: Removed strict relational constraints by decoupling the query 
-    // or processing it safely without letting missing barcodes drop rows.
-    const { data, error } = await supabase
-      .from('legacy_stock_counts')
-      .select(`
-        id,
-        created_at,
-        pallet_number,
-        barcode,
-        product_name,
-        quantity,
-        season_type,
-        user_id,
-        store_profiles ( store_id, store_name )
-      `)
+      .select('id, created_at, pallet_number, barcode, product_name, quantity, season_type, user_id')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      logStr += `❌ Relational query failure: ${error.message}\n`;
+    if (countsError) {
+      logStr += `❌ Counts Fetch Failed: ${countsError.message}\n`;
+      setDiagnosticLog(logStr);
+      setLoading(false);
+      return;
     }
 
-    if (data) {
-      // Fetch corresponding prices manually to guarantee no rows are dropped by inner joins
-      const uniqueBarcodes = [...new Set(data.map(item => item.barcode))];
-      let priceMap = {};
+    logStr += `✅ Step 1: Found ${countsData?.length || 0} raw rows in database.\n`;
 
+    if (countsData && countsData.length > 0) {
+      // Step 2: Fetch all profiles to map user IDs manually in browser memory
+      const { data: profilesData } = await supabase.from('store_profiles').select('id, store_id, store_name');
+      const profileMap = {};
+      if (profilesData) {
+        profilesData.forEach(p => { profileMap[p.id] = p; });
+      }
+
+      // Step 3: Fetch item pricing details mapping
+      const uniqueBarcodes = [...new Set(countsData.map(item => item.barcode))];
+      let priceMap = {};
       if (uniqueBarcodes.length > 0) {
-        const { data: prices } = await supabase
+        const { data: productsData } = await supabase
           .from('store_products')
           .select('barcode, price')
           .in('barcode', uniqueBarcodes);
-        
-        if (prices) {
-          prices.forEach(p => { priceMap[p.barcode] = p.price; });
+        if (productsData) {
+          productsData.forEach(p => { priceMap[p.barcode] = p.price; });
         }
       }
 
-      const formatted = data.map(item => {
+      // Step 4: Statically combine datasets
+      const formatted = countsData.map(item => {
         const livePriceString = priceMap[item.barcode] || "£0.00";
         const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
         
-        const displayStoreId = item.store_profiles?.store_id || 'ADMIN';
-        const displayStoreName = item.store_profiles?.store_name || 'Corporate Headquarters';
+        const matchingProfile = profileMap[item.user_id];
+        const displayStoreId = matchingProfile?.store_id || 'ADMIN';
+        const displayStoreName = matchingProfile?.store_name || 'Corporate Headquarters';
 
         return {
           ...item,
@@ -113,12 +76,14 @@ export default function AdminLegacyDashboard() {
       });
 
       setMasterList(formatted);
-
       const uniqueStores = [...new Set(formatted.map(item => item.storeId))].sort();
       setStores(uniqueStores);
-      
-      logStr += `✅ Render complete: Processed ${formatted.length} rows onto screen data grid.\n`;
+      logStr += `✅ Step 2: Decoupled client memory render processed successfully.\n`;
+    } else {
+      setMasterList([]);
+      setStores([]);
     }
+
     setDiagnosticLog(logStr);
     setLoading(false);
   };
@@ -137,16 +102,9 @@ export default function AdminLegacyDashboard() {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-4 no-print">
-      
-      {/* DIAGNOSTIC PANEL COMPONENT */}
       <div className="bg-slate-900 text-emerald-400 p-4 rounded-lg font-mono text-[11px] space-y-1 border border-slate-950 shadow-inner">
-        <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-2">🔧 Live Pipeline Diagnostic Feed</h4>
+        <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-1">🔧 Decoupled Pipeline Feed</h4>
         <pre className="whitespace-pre-wrap">{diagnosticLog}</pre>
-        {rawCountsCount > 0 && masterList.length === 0 && (
-          <div className="mt-2 bg-red-950/50 border border-red-800 text-red-300 p-2 rounded">
-            <strong>⚠️ Structural Blockage Detected:</strong> Raw data exists ({rawCountsCount} rows), but your dashboard query is dropping them. This confirms either your Admin profile record is missing or the RLS policy is blocking your read permission.
-          </div>
-        )}
       </div>
 
       <div className="border-b pb-2 flex justify-between items-center">
@@ -189,7 +147,7 @@ export default function AdminLegacyDashboard() {
       <div className="max-h-[400px] overflow-y-auto border rounded-lg">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-gray-100 border-b text-gray-500 uppercase text-[9px] font-black sticky top-0 bg-gray-100">
+            <tr className="bg-gray-100 border-b text-gray-500 uppercase text-[9px] font-black sticky top-0">
               <th className="p-2">Store</th>
               <th className="p-2">Season / Pallet</th>
               <th className="p-2">Product Description</th>
@@ -199,7 +157,7 @@ export default function AdminLegacyDashboard() {
           </thead>
           <tbody className="divide-y font-medium text-gray-700">
             {filteredData.length === 0 ? (
-              <tr><td colSpan={5} className="p-4 text-center italic text-gray-400 bg-white">No multi-store metrics recorded matching criteria.</td></tr>
+              <tr><td colSpan={5} className="p-4 text-center italic text-gray-400 bg-white">No entries matching criteria.</td></tr>
             ) : (
               filteredData.map(item => (
                 <tr key={item.id} className="hover:bg-gray-50/80 bg-white">
