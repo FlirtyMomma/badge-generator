@@ -111,16 +111,16 @@ export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[10px] font-bold text-gray-400 mb-0.5">Store Code ID</label>
-              <input type="text" placeholder="e.g. STORE05" value={newStoreId} onChange={e => setNewStoreId(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none uppercase" />
+              <input type="text" placeholder="e.g. 155" value={newStoreId} onChange={e => setNewStoreId(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none uppercase" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-gray-400 mb-0.5">Store Branch Name</label>
-              <input type="text" placeholder="e.g. Leeds Center" value={newStoreName} onChange={e => setNewStoreName(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none" />
+              <input type="text" placeholder="e.g. Coalville" value={newStoreName} onChange={e => setNewStoreName(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none" />
             </div>
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 mb-0.5">Allocated Email Address</label>
-            <input type="email" placeholder="store05@onebeyond.com" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none" />
+            <input type="email" placeholder="coalville.155@onebeyond.co.uk" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full border p-2 rounded bg-white font-medium text-gray-700 outline-none" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 mb-0.5">Terminal Password</label>

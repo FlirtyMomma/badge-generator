@@ -9,7 +9,12 @@ import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
 
 function App() {
-  const [mode, setMode] = useState(() => localStorage.getItem('onebeyond_active_tab') || 'badges');
+  // If local active tab was legacy or login but there is no session, reset gracefully to badges
+  const [mode, setMode] = useState(() => {
+    const saved = localStorage.getItem('onebeyond_active_tab') || 'badges';
+    return (saved === 'legacy' || saved === 'login') ? 'badges' : saved;
+  });
+  
   const [scannedProduct, setScannedProduct] = useState(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -19,7 +24,7 @@ function App() {
   // --- SECURE SUPABASE AUTHENTICATION STATE ---
   const [session, setSession] = useState(null);
   const [storeId, setStoreId] = useState('');
-  const [isSystemAdmin, setIsSystemAdmin] = useState(false); // Tracks database row status
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -40,6 +45,7 @@ function App() {
     setEmailInput('');
     setPasswordInput('');
     setIsLoggingIn(false);
+    setMode('badges'); // Bounce back to baseline utility layout on signout
   };
 
   // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
@@ -101,6 +107,8 @@ function App() {
     if (data) {
       setStoreId(data.store_id);
       setIsSystemAdmin(!!data.is_admin);
+      // Automatically forward user straight into the core counting panel once credentials pass
+      setMode('legacy');
     }
   };
 
@@ -164,10 +172,10 @@ function App() {
             <span className="text-[#004aad]">One</span>Beyond Store Hub
           </h1>
           
-          <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} />
+          <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
 
           {/* Secure Login Interceptor Layer */}
-          {!session && (mode === 'legacy' || mode === 'admin') ? (
+          {mode === 'login' && !session && (
             <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center">
               <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
               <p className="text-[11px] text-gray-400">Please provide your admin-allocated store email address credentials.</p>
@@ -177,52 +185,48 @@ function App() {
                 {isLoggingIn ? 'Authenticating...' : 'Sign In'}
               </button>
             </form>
-          ) : (
-            <>
-              {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="leftColumn" />}
-              {mode === 'priceCheck' && (
-                <ScanPanel mode={mode} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActiveZoomBarcode={setActiveZoomBarcode} savedProducts={savedProducts} setSavedProducts={setSavedProducts} />
-              )}
-              {mode === 'legacy' && (
-                <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} />
-              )}
-              {mode === 'admin' && (
-                <DbMaster 
-                  isAdminAuthenticated={isAdminAuthenticated} 
-                  setIsAdminAuthenticated={setIsAdminAuthenticated} 
-                  isParsing={isParsing} 
-                  setIsParsing={setIsParsing} 
-                  isSystemAdmin={isSystemAdmin}
-                />
-              )}
-            </>
+          )}
+
+          {/* Core App Module Renders */}
+          {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="leftColumn" />}
+          {mode === 'priceCheck' && (
+            <ScanPanel mode={mode} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActiveZoomBarcode={setActiveZoomBarcode} savedProducts={savedProducts} setSavedProducts={setSavedProducts} />
+          )}
+          {mode === 'legacy' && session && (
+            <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} />
+          )}
+          {mode === 'admin' && session && (
+            <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} />
           )}
         </div>
 
         {/* Right Side Column Dashboard Workspace */}
         <div className="hidden xl:block w-full no-print">
-          {session || (mode !== 'legacy' && mode !== 'admin') ? (
-            <>
-              {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
-              {mode === 'priceCheck' && (
-                <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
-              )}
-              {mode === 'legacy' && (
-                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-                  <span className="text-4xl mb-2">📦</span>
-                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
-                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
-                </div>
-              )}
-              {mode === 'admin' && (
-                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-                  <span className="text-4xl mb-2">⚙️</span>
-                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
-                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
-                </div>
-              )}
-            </>
-          ) : null}
+          {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
+          {mode === 'priceCheck' && (
+            <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
+          )}
+          {mode === 'legacy' && session && (
+            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+              <span className="text-4xl mb-2">📦</span>
+              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
+            </div>
+          )}
+          {mode === 'admin' && session && (
+            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+              <span className="text-4xl mb-2">⚙️</span>
+              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
+            </div>
+          )}
+          {mode === 'login' && !session && (
+            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+              <span className="text-4xl mb-2">🔒</span>
+              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Secure Storage Gateway</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm">Authenticate your location account on the left console panel to clear cloud database pipeline routing access restrictions.</p>
+            </div>
+          )}
         </div>
 
       </div>
