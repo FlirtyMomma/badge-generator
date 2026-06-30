@@ -19,6 +19,7 @@ function App() {
   // --- SECURE SUPABASE AUTHENTICATION STATE ---
   const [session, setSession] = useState(null);
   const [storeId, setStoreId] = useState('');
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false); // Tracks database row status
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -27,16 +28,15 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
-  // FIXED: Force a deep state purge on sign out to prevent session inheritance errors
   const handleLogoutStore = async () => {
     try {
       await supabase.auth.signOut();
     } catch (err) {
       console.warn("Session already cleared on server:", err);
     }
-    // Deep state reset: Ensure all local memory variables are explicitly flushed
     setSession(null);
     setStoreId('');
+    setIsSystemAdmin(false);
     setEmailInput('');
     setPasswordInput('');
     setIsLoggingIn(false);
@@ -74,7 +74,6 @@ function App() {
     };
   }, [session]);
 
-  // Listen for login/logout auth state shifts globally
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
@@ -87,6 +86,7 @@ function App() {
         fetchStoreProfile(currentSession.user.id);
       } else {
         setStoreId('');
+        setIsSystemAdmin(false);
       }
     });
 
@@ -97,17 +97,18 @@ function App() {
   useEffect(() => { localStorage.setItem('onebeyond_saved_products', JSON.stringify(savedProducts)); }, [savedProducts]);
 
   const fetchStoreProfile = async (userId) => {
-    const { data } = await supabase.from('store_profiles').select('store_id').eq('id', userId).single();
-    if (data) setStoreId(data.store_id);
+    const { data } = await supabase.from('store_profiles').select('store_id, is_admin').eq('id', userId).single();
+    if (data) {
+      setStoreId(data.store_id);
+      setIsSystemAdmin(!!data.is_admin);
+    }
   };
 
-  // FIXED: Implemented a robust login request wrapper that ensures a clean slate
   const handleStoreLogin = async (e) => {
     e.preventDefault();
     if (isLoggingIn) return;
     setIsLoggingIn(true);
 
-    // Explicitly confirm old tokens are abandoned before signing in again
     const targetEmail = emailInput.trim();
     const targetPassword = passwordInput;
 
@@ -118,7 +119,6 @@ function App() {
 
     if (error) {
       alert(`Login Failed: ${error.message}`);
-      // If the error was due to an expired/stale hook session, clear everything completely
       if (error.message.toLowerCase().includes('expired')) {
         await handleLogoutStore();
       }
@@ -151,7 +151,7 @@ function App() {
       
       {session && storeId && (
         <div className="w-full max-w-md xl:max-w-6xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
-          <span>🏪 Connected: <strong>{storeId}</strong></span>
+          <span>🏪 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
           <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
         </div>
       )}
@@ -164,10 +164,10 @@ function App() {
             <span className="text-[#004aad]">One</span>Beyond Store Hub
           </h1>
           
-          <Navigation mode={mode} setMode={setMode} />
+          <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} />
 
           {/* Secure Login Interceptor Layer */}
-          {!session && (mode === 'legacy') ? (
+          {!session && (mode === 'legacy' || mode === 'admin') ? (
             <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center">
               <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
               <p className="text-[11px] text-gray-400">Please provide your admin-allocated store email address credentials.</p>
@@ -192,6 +192,7 @@ function App() {
                   setIsAdminAuthenticated={setIsAdminAuthenticated} 
                   isParsing={isParsing} 
                   setIsParsing={setIsParsing} 
+                  isSystemAdmin={isSystemAdmin}
                 />
               )}
             </>
@@ -200,7 +201,7 @@ function App() {
 
         {/* Right Side Column Dashboard Workspace */}
         <div className="hidden xl:block w-full no-print">
-          {session || mode !== 'legacy' ? (
+          {session || (mode !== 'legacy' && mode !== 'admin') ? (
             <>
               {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
               {mode === 'priceCheck' && (
@@ -211,6 +212,13 @@ function App() {
                   <span className="text-4xl mb-2">📦</span>
                   <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
                   <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
+                </div>
+              )}
+              {mode === 'admin' && (
+                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                  <span className="text-4xl mb-2">⚙️</span>
+                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
+                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
                 </div>
               )}
             </>
