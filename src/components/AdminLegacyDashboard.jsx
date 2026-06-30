@@ -8,6 +8,10 @@ export default function AdminLegacyDashboard() {
   const [selectedSeason, setSelectedSeason] = useState('All');
   const [selectedPallet, setSelectedPallet] = useState('All');
   const [loading, setLoading] = useState(true);
+  
+  // DIAGNOSTIC STATE FIELDS
+  const [diagnosticLog, setDiagnosticLog] = useState('');
+  const [rawCountsCount, setRawCountsCount] = useState(0);
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
@@ -17,7 +21,44 @@ export default function AdminLegacyDashboard() {
 
   const fetchAllStoreData = async () => {
     setLoading(true);
-    // Fetch counts and perform a left-join on both store products and store profiles
+    let logStr = "--- System Diagnostics ---\n";
+
+    // TEST 1: Pull raw counts with zero relational joins
+    const { data: rawCounts, error: err1 } = await supabase
+      .from('legacy_stock_counts')
+      .select('*');
+
+    if (err1) {
+      logStr += `❌ Test 1 Failed (Raw Select Error): ${err1.message}\n`;
+    } else {
+      logStr += `✅ Test 1 Passed: Found ${rawCounts?.length || 0} rows in legacy_stock_counts table.\n`;
+      setRawCountsCount(rawCounts?.length || 0);
+    }
+
+    // TEST 2: Check active user identity
+    const { data: authUser } = await supabase.auth.getUser();
+    if (authUser?.user) {
+      logStr += `👤 Active Admin Auth ID: ${authUser.user.id}\n`;
+      
+      // TEST 3: Check if this user is actually an admin in store_profiles
+      const { data: profile, error: err3 } = await supabase
+        .from('store_profiles')
+        .select('*')
+        .eq('id', authUser.user.id)
+        .single();
+
+      if (err3) {
+        logStr += `❌ Test 3 Failed (Profile Look-up Error): ${err3.message}\n`;
+      } else {
+        logStr += `📊 Profile row matches: StoreID: ${profile.store_id}, IsAdmin: ${profile.is_admin}\n`;
+      }
+    } else {
+      logStr += `❌ Active Auth ID: No user session found.\n`;
+    }
+
+    setDiagnosticLog(logStr);
+
+    // Primary relational query loop
     const { data, error } = await supabase
       .from('legacy_stock_counts')
       .select(`
@@ -48,14 +89,12 @@ export default function AdminLegacyDashboard() {
       });
       setMasterList(formatted);
 
-      // Extract unique stores list for the filter dropdown
       const uniqueStores = [...new Set(formatted.map(item => item.storeId))].sort();
       setStores(uniqueStores);
     }
     setLoading(false);
   };
 
-  // --- FILTER MATRIX ---
   const filteredData = masterList.filter(item => {
     const matchesStore = selectedStore === 'All' || item.storeId === selectedStore;
     const matchesSeason = selectedSeason === 'All' || item.season_type === selectedSeason;
@@ -70,12 +109,23 @@ export default function AdminLegacyDashboard() {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-4 no-print">
+      
+      {/* DIAGNOSTIC PANEL COMPONENT */}
+      <div className="bg-slate-900 text-emerald-400 p-4 rounded-lg font-mono text-[11px] space-y-1 border border-slate-950 shadow-inner">
+        <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-2">🔧 Live Pipeline Diagnostic Feed</h4>
+        <pre className="whitespace-pre-wrap">{diagnosticLog}</pre>
+        {rawCountsCount > 0 && masterList.length === 0 && (
+          <div className="mt-2 bg-red-950/50 border border-red-800 text-red-300 p-2 rounded">
+            <strong>⚠️ Structural Blockage Detected:</strong> Raw data exists ({rawCountsCount} rows), but your dashboard query is dropping them. This confirms either your Admin profile record is missing or the RLS policy is blocking your read permission.
+          </div>
+        )}
+      </div>
+
       <div className="border-b pb-2 flex justify-between items-center">
         <h2 className="text-sm font-black uppercase text-gray-700 tracking-wider">📋 Master Corporate Stock Audit</h2>
         <button onClick={fetchAllStoreData} className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded font-bold border">🔄 Refresh Feed</button>
       </div>
 
-      {/* Admin Filters Grid */}
       <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 rounded-lg border text-xs">
         <div>
           <label className="block text-[9px] font-bold text-gray-400 mb-0.5">Filter Store</label>
@@ -97,7 +147,6 @@ export default function AdminLegacyDashboard() {
         </div>
       </div>
 
-      {/* Financial Overview Metrics */}
       <div className="grid grid-cols-2 gap-4 bg-blue-50/40 p-4 rounded-xl border border-blue-100 text-center">
         <div>
           <span className="block text-[10px] font-black uppercase text-gray-400">Total Counted Items</span>
@@ -109,7 +158,6 @@ export default function AdminLegacyDashboard() {
         </div>
       </div>
 
-      {/* Master Data Log Table View */}
       <div className="max-h-[400px] overflow-y-auto border rounded-lg">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
