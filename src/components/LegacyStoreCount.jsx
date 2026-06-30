@@ -111,6 +111,19 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     if (session) localStorage.setItem(`onebeyond_last_pallet_${session.user.id}`, pallet);
   }, [pallet, session]);
 
+  // FIXED: Explicitly define target bounding parameters for the engine algorithm
+  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    // Create a precise horizontal slot optimized for retail barcodes
+    const boxWidth = Math.floor(viewfinderWidth * 0.75);
+    const boxHeight = Math.floor(minEdge * 0.35); 
+    
+    return {
+      width: boxWidth < 250 ? 250 : boxWidth,
+      height: boxHeight < 120 ? 120 : boxHeight
+    };
+  };
+
   const startCamera = async () => {
     try {
       if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
@@ -119,9 +132,11 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       await html5QrcodeRef.current.start(
         { facingMode: "environment" },
         {
-          fps: 15,
-          qrbox: { width: 260, height: 160 },
-          videoConstraints: { width: { ideal: 1920, min: 1080 }, height: { ideal: 1080, min: 720 }, facingMode: "environment" }
+          fps: 20, // Increased frame refresh speed for faster lock
+          qrbox: qrboxFunction,
+          // FIXED: Forces the image decoding matrix to ONLY analyze pixels inside the box bounds
+          rememberLastUsedCamera: true,
+          supportedScanTypes: [0] // Decodes traditional 1D barcodes exclusively
         },
         (text) => {
           playSuccessBeep();
@@ -253,10 +268,30 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         </div>
       </div>
 
+      {/* Viewfinder Container Wrapper with Targeting Shutter Guides */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="legacy-reader" className="w-full"></div>
+        
+        {/* FIXED: CSS Targeting Shutter Box. Shuts down light focus, highlighting only the strict ROI frame channel */}
         {isScanning && !uiPaused && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+          <div className="absolute inset-0 pointer-events-none flex flex-col justify-between items-center z-10">
+            {/* Top Shadow Shutter Mask */}
+            <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
+            
+            {/* Clear Horizon Scan Target Line Slot Window */}
+            <div className="w-3/4 aspect-[2.5/1] min-h-[120px] max-w-sm border-2 border-dashed border-blue-400 relative rounded flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+              {/* Laser Line Pointer Overlay */}
+              <div className="w-full h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div>
+              <span className="absolute bottom-1 text-[8px] font-black text-blue-400 uppercase tracking-widest bg-black/70 px-1 rounded">Align Barcode Here</span>
+            </div>
+            
+            {/* Bottom Shadow Shutter Mask */}
+            <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
+          </div>
+        )}
+
+        {isScanning && !uiPaused && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20">
             <button onClick={stopCamera} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase shadow-md">🛑 Stop Scanning</button>
           </div>
         )}
