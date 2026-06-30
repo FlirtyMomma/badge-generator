@@ -7,7 +7,6 @@ import SavedBatchList from './components/SavedBatchList';
 import LegacyStoreCount from './components/LegacyStoreCount';
 import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
-// --- NEW IMPORT ---
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 
 function App() {
@@ -22,6 +21,7 @@ function App() {
   const [activeZoomBarcode, setActiveZoomBarcode] = useState(null);
   const contentRef = useRef(null);
 
+  // --- SECURE SUPABASE AUTHENTICATION STATE ---
   const [session, setSession] = useState(null);
   const [storeId, setStoreId] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
@@ -48,6 +48,7 @@ function App() {
     setMode('badges'); 
   };
 
+  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
   useEffect(() => {
     if (!session) return; 
 
@@ -205,7 +206,7 @@ function App() {
             <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
           )}
           
-          {/* UPDATED VISIBILITY: When an admin is in the Store Portal or DB Master panel, show the master ledger summary */}
+          {/* DESKTOP ONLY MASTER FEED LAYER */}
           {(mode === 'legacy' || mode === 'admin') && session && isSystemAdmin ? (
             <AdminLegacyDashboard />
           ) : (
