@@ -8,6 +8,7 @@ import LegacyStoreCount from './components/LegacyStoreCount';
 import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
+import StoreStockTakeList from './components/StoreStockTakeList';
 
 function App() {
   const [mode, setMode] = useState(() => {
@@ -21,7 +22,6 @@ function App() {
   const [activeZoomBarcode, setActiveZoomBarcode] = useState(null);
   const contentRef = useRef(null);
 
-  // --- SECURE SUPABASE AUTHENTICATION STATE ---
   const [session, setSession] = useState(null);
   const [storeId, setStoreId] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
@@ -48,7 +48,6 @@ function App() {
     setMode('badges'); 
   };
 
-  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
   useEffect(() => {
     if (!session) return; 
 
@@ -65,18 +64,19 @@ function App() {
     };
 
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    
-    activityEvents.forEach(event => {
-      window.addEventListener(event, resetTimeout);
-    });
+    window.addEventListener('mousedown', resetTimeout);
+    window.addEventListener('mousemove', resetTimeout);
+    window.addEventListener('keypress', resetTimeout);
+    window.addEventListener('scroll', resetTimeout);
 
     resetTimeout();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
-      activityEvents.forEach(event => {
-        window.removeEventListener(event, resetTimeout);
-      });
+      window.removeEventListener('mousedown', resetTimeout);
+      window.removeEventListener('mousemove', resetTimeout);
+      window.removeEventListener('keypress', resetTimeout);
+      window.removeEventListener('scroll', resetTimeout);
     };
   }, [session]);
 
@@ -116,19 +116,13 @@ function App() {
     if (isLoggingIn) return;
     setIsLoggingIn(true);
 
-    const targetEmail = emailInput.trim();
-    const targetPassword = passwordInput;
-
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: targetEmail,
-      password: targetPassword,
+      email: emailInput.trim(),
+      password: passwordInput,
     });
 
     if (error) {
       alert(`Login Failed: ${error.message}`);
-      if (error.message.toLowerCase().includes('expired')) {
-        await handleLogoutStore();
-      }
     } else if (data?.session) {
       setSession(data.session);
       fetchStoreProfile(data.session.user.id);
@@ -153,19 +147,27 @@ function App() {
     }
   };
 
+  // FIXED: Determine if the screen should break out into full screen layout
+  const isDataDenseView = mode === 'admin' || mode === 'stockTake';
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
       
       {session && storeId && (
-        <div className="w-full max-w-md xl:max-w-6xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
+        <div className={`w-full flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print ${isDataDenseView ? 'max-w-7xl' : 'max-w-md xl:max-w-6xl'}`}>
           <span>🏪 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
           <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
         </div>
       )}
 
-      <div className="w-full max-w-md xl:max-w-6xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start">
+      {/* FIXED: Conditional grid rules depending on active menu panel view */}
+      <div className={`w-full transition-all duration-300 ${
+        isDataDenseView 
+          ? 'max-w-7xl grid grid-cols-1 gap-6' // Full width canvas layout block
+          : 'max-w-md xl:max-w-6xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start' // Normal split panel
+      }`}>
         
-        {/* Left Side Column Card */}
+        {/* Left Side Column Card (Acts as Full Width sheet container if Data Mode is on) */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 no-print w-full mb-6 xl:mb-0">
           <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
             <span className="text-[#004aad]">One</span>Beyond Store Hub
@@ -175,9 +177,9 @@ function App() {
 
           {/* Secure Login Interceptor Layer */}
           {mode === 'login' && !session && (
-            <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center">
+            <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
               <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
-              <p className="text-[11px] text-gray-400">Please provide your admin-allocated store email address credentials.</p>
+              <p className="text-[11px] text-gray-400">Please provide your admin-allocated store credentials.</p>
               <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="store01@onebeyond.com" required />
               <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="Store Password" required />
               <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md">
@@ -194,48 +196,43 @@ function App() {
           {mode === 'legacy' && session && (
             <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} />
           )}
+          
+          {/* EXPANDED DESKTOP CANVASES */}
+          {mode === 'stockTake' && session && (
+            <StoreStockTakeList session={session} />
+          )}
           {mode === 'admin' && session && (
             <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} />
           )}
         </div>
 
-        {/* Right Side Column Dashboard Workspace */}
-        <div className="hidden xl:block w-full no-print">
-          {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
-          {mode === 'priceCheck' && (
-            <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
-          )}
-          
-          {/* DESKTOP ONLY MASTER FEED LAYER */}
-          {(mode === 'legacy' || mode === 'admin') && session && isSystemAdmin ? (
-            <AdminLegacyDashboard />
-          ) : (
-            <>
-              {mode === 'legacy' && session && (
+        {/* Right Side Column Dashboard Workspace (Only renders for standard tools layout) */}
+        {!isDataDenseView && (
+          <div className="hidden xl:block w-full no-print">
+            {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
+            {mode === 'priceCheck' && (
+              <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
+            )}
+            {mode === 'legacy' && session && (
+              isSystemAdmin ? (
+                <AdminLegacyDashboard />
+              ) : (
                 <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
                   <span className="text-4xl mb-2">📦</span>
                   <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
                   <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
                 </div>
-              )}
-              {mode === 'admin' && session && (
-                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-                  <span className="text-4xl mb-2">⚙️</span>
-                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
-                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
-                </div>
-              )}
-            </>
-          )}
-
-          {mode === 'login' && !session && (
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-              <span className="text-4xl mb-2">🔒</span>
-              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Secure Storage Gateway</h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">Authenticate your location account on the left console panel to clear cloud database pipeline routing access restrictions.</p>
-            </div>
-          )}
-        </div>
+              )
+            )}
+            {mode === 'login' && !session && (
+              <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                <span className="text-4xl mb-2">🔒</span>
+                <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Secure Storage Gateway</h3>
+                <p className="text-xs text-gray-400 mt-1 max-w-sm">Authenticate your location account on the left console panel to clear cloud database pipeline routing access restrictions.</p>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
 
