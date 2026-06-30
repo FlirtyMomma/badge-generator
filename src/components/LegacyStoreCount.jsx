@@ -58,40 +58,40 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   const fetchStoreSeasonCounts = async () => {
     if (!session?.user?.id) return;
 
-    const { data, error } = await supabase
+    // Pull raw counts directly without letting an empty product link wipe out the row
+    const { data: countsData, error: countsError } = await supabase
       .from('legacy_stock_counts')
-      .select(`
-        id,
-        created_at,
-        pallet_number,
-        barcode,
-        product_name,
-        quantity,
-        store_products (
-          price
-        )
-      `)
+      .select('id, created_at, pallet_number, barcode, product_name, quantity')
       .eq('user_id', session.user.id)
       .eq('season_type', viewSeason)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error("Fetch failure:", error.message);
+    if (countsError) {
+      console.error("Fetch failure:", countsError.message);
       return;
     }
 
-    if (data) {
-      const formattedData = data.map(item => {
-        const livePriceString = item.store_products?.price || "£0.00";
+    if (countsData) {
+      const uniqueBarcodes = [...new Set(countsData.map(item => item.barcode))];
+      let priceMap = {};
+
+      if (uniqueBarcodes.length > 0) {
+        const { data: productsData } = await supabase
+          .from('store_products')
+          .select('barcode, price')
+          .in('barcode', uniqueBarcodes);
+
+        if (productsData) {
+          productsData.forEach(p => { priceMap[p.barcode] = p.price; });
+        }
+      }
+
+      const formattedData = countsData.map(item => {
+        const livePriceString = priceMap[item.barcode] || "£0.00";
         const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
-        
-        // Safety check to ensure the row never gets hidden due to a profile string quirk
-        return { 
-          ...item, 
-          livePriceString, 
-          parsedPrice 
-        };
+        return { ...item, livePriceString, parsedPrice };
       });
+
       setSessionList(formattedData);
     }
   };

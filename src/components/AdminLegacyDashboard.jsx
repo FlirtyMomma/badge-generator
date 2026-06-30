@@ -58,7 +58,8 @@ export default function AdminLegacyDashboard() {
 
     setDiagnosticLog(logStr);
 
-// Primary relational query loop with explicit safe formatting
+    // FIXED: Removed strict relational constraints by decoupling the query 
+    // or processing it safely without letting missing barcodes drop rows.
     const { data, error } = await supabase
       .from('legacy_stock_counts')
       .select(`
@@ -70,19 +71,36 @@ export default function AdminLegacyDashboard() {
         quantity,
         season_type,
         user_id,
-        store_profiles ( store_id, store_name ),
-        store_products ( price )
+        store_profiles ( store_id, store_name )
       `)
       .order('created_at', { ascending: false });
 
+    if (error) {
+      logStr += `❌ Relational query failure: ${error.message}\n`;
+    }
+
     if (data) {
+      // Fetch corresponding prices manually to guarantee no rows are dropped by inner joins
+      const uniqueBarcodes = [...new Set(data.map(item => item.barcode))];
+      let priceMap = {};
+
+      if (uniqueBarcodes.length > 0) {
+        const { data: prices } = await supabase
+          .from('store_products')
+          .select('barcode, price')
+          .in('barcode', uniqueBarcodes);
+        
+        if (prices) {
+          prices.forEach(p => { priceMap[p.barcode] = p.price; });
+        }
+      }
+
       const formatted = data.map(item => {
-        const livePriceString = item.store_products?.price || "£0.00";
+        const livePriceString = priceMap[item.barcode] || "£0.00";
         const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
         
-        // FIXED: Fallback to a slice of the User ID if no profile record exists yet
-        const displayStoreId = item.store_profiles?.store_id || `ID-${item.user_id?.substring(0, 4)}`;
-        const displayStoreName = item.store_profiles?.store_name || 'Unlinked Terminal';
+        const displayStoreId = item.store_profiles?.store_id || 'ADMIN';
+        const displayStoreName = item.store_profiles?.store_name || 'Corporate Headquarters';
 
         return {
           ...item,
@@ -93,11 +111,15 @@ export default function AdminLegacyDashboard() {
           totalItemValue: parsedPrice * item.quantity
         };
       });
+
       setMasterList(formatted);
 
       const uniqueStores = [...new Set(formatted.map(item => item.storeId))].sort();
       setStores(uniqueStores);
+      
+      logStr += `✅ Render complete: Processed ${formatted.length} rows onto screen data grid.\n`;
     }
+    setDiagnosticLog(logStr);
     setLoading(false);
   };
 
