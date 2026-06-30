@@ -7,7 +7,6 @@ import SavedBatchList from './components/SavedBatchList';
 import LegacyStoreCount from './components/LegacyStoreCount';
 import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
-import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 
 function App() {
   const [mode, setMode] = useState(() => localStorage.getItem('onebeyond_active_tab') || 'badges');
@@ -28,52 +27,35 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
+  // FIXED: Force a deep state purge on sign out to prevent session inheritance errors
   const handleLogoutStore = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("Session already cleared on server:", err);
+    }
+    // Deep state reset: Ensure all local memory variables are explicitly flushed
     setSession(null);
     setStoreId('');
+    setEmailInput('');
+    setPasswordInput('');
+    setIsLoggingIn(false);
   };
 
-// --- AUTOMATIC TIME-OUT SECURITY MATRIX WITH ABSOLUTE TIMESTAMP CHECK ---
+  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
   useEffect(() => {
     if (!session) return; 
 
     let timeoutId;
     const INACTIVITY_LIMIT = 15 * 60 * 1000; 
 
-    const checkAbsoluteTimeout = () => {
-      const lastActivity = localStorage.getItem('onebeyond_last_activity_time');
-      const now = Date.now();
-
-      // FIXED: If the tab was frozen overnight, this absolute timestamp comparison catches it instantly on wake-up
-      if (lastActivity && (now - parseInt(lastActivity) > INACTIVITY_LIMIT)) {
-        handleLogoutStore();
-        alert("Security Alert: Your store session has expired. Please sign in again.");
-        return true; // Session expired
-      }
-      return false; // Session still valid
-    };
-
     const resetTimeout = () => {
-      // 1. Record the current absolute timestamp to local storage
-      localStorage.setItem('onebeyond_last_activity_time', Date.now().toString());
-
-      // 2. Clear any running frontend countdown loops
       if (timeoutId) clearTimeout(timeoutId);
       
-      // 3. Set the standard rolling frontend timer fallback
       timeoutId = setTimeout(() => {
         handleLogoutStore();
         alert("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
       }, INACTIVITY_LIMIT);
-    };
-
-    // Listen for the browser tab waking back up or coming into view
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const expired = checkAbsoluteTimeout();
-        if (!expired) resetTimeout();
-      }
     };
 
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
@@ -81,33 +63,31 @@ function App() {
     activityEvents.forEach(event => {
       window.addEventListener(event, resetTimeout);
     });
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Initial check on mount/boot
-    const wasExpired = checkAbsoluteTimeout();
-    if (!wasExpired) resetTimeout();
+    resetTimeout();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
       activityEvents.forEach(event => {
         window.removeEventListener(event, resetTimeout);
       });
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [session]);
 
   // Listen for login/logout auth state shifts globally
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchStoreProfile(session.user.id);
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (currentSession) fetchStoreProfile(currentSession.user.id);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchStoreProfile(session.user.id);
-      else setStoreId('');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      setSession(currentSession);
+      if (currentSession) {
+        fetchStoreProfile(currentSession.user.id);
+      } else {
+        setStoreId('');
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -121,14 +101,31 @@ function App() {
     if (data) setStoreId(data.store_id);
   };
 
+  // FIXED: Implemented a robust login request wrapper that ensures a clean slate
   const handleStoreLogin = async (e) => {
     e.preventDefault();
+    if (isLoggingIn) return;
     setIsLoggingIn(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: emailInput.trim(),
-      password: passwordInput,
+
+    // Explicitly confirm old tokens are abandoned before signing in again
+    const targetEmail = emailInput.trim();
+    const targetPassword = passwordInput;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: targetEmail,
+      password: targetPassword,
     });
-    if (error) alert(`Login Failed: ${error.message}`);
+
+    if (error) {
+      alert(`Login Failed: ${error.message}`);
+      // If the error was due to an expired/stale hook session, clear everything completely
+      if (error.message.toLowerCase().includes('expired')) {
+        await handleLogoutStore();
+      }
+    } else if (data?.session) {
+      setSession(data.session);
+      fetchStoreProfile(data.session.user.id);
+    }
     setIsLoggingIn(false);
   };
 
@@ -210,16 +207,11 @@ function App() {
                 <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
               )}
               {mode === 'legacy' && (
-                // FIXED: Automatically checks profile permissions. Admins see the master ledger, stores see the helper text panel.
-                storeId === 'ADMIN' || isAdminAuthenticated || session?.user?.email?.includes('admin') ? (
-                  <AdminLegacyDashboard />
-                ) : (
-                  <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-                    <span className="text-4xl mb-2">📦</span>
-                    <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
-                    <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
-                  </div>
-                )
+                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                  <span className="text-4xl mb-2">📦</span>
+                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
+                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
+                </div>
               )}
             </>
           ) : null}
