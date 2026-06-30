@@ -7,9 +7,10 @@ import SavedBatchList from './components/SavedBatchList';
 import LegacyStoreCount from './components/LegacyStoreCount';
 import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
+// --- NEW IMPORT ---
+import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 
 function App() {
-  // If local active tab was legacy or login but there is no session, reset gracefully to badges
   const [mode, setMode] = useState(() => {
     const saved = localStorage.getItem('onebeyond_active_tab') || 'badges';
     return (saved === 'legacy' || saved === 'login') ? 'badges' : saved;
@@ -21,7 +22,6 @@ function App() {
   const [activeZoomBarcode, setActiveZoomBarcode] = useState(null);
   const contentRef = useRef(null);
 
-  // --- SECURE SUPABASE AUTHENTICATION STATE ---
   const [session, setSession] = useState(null);
   const [storeId, setStoreId] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
@@ -45,10 +45,9 @@ function App() {
     setEmailInput('');
     setPasswordInput('');
     setIsLoggingIn(false);
-    setMode('badges'); // Bounce back to baseline utility layout on signout
+    setMode('badges'); 
   };
 
-  // --- AUTOMATIC TIME-OUT SECURITY MATRIX ---
   useEffect(() => {
     if (!session) return; 
 
@@ -107,7 +106,6 @@ function App() {
     if (data) {
       setStoreId(data.store_id);
       setIsSystemAdmin(!!data.is_admin);
-      // Automatically forward user straight into the core counting panel once credentials pass
       setMode('legacy');
     }
   };
@@ -206,20 +204,29 @@ function App() {
           {mode === 'priceCheck' && (
             <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
           )}
-          {mode === 'legacy' && session && (
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-              <span className="text-4xl mb-2">📦</span>
-              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
-            </div>
+          
+          {/* UPDATED VISIBILITY: When an admin is in the Store Portal or DB Master panel, show the master ledger summary */}
+          {(mode === 'legacy' || mode === 'admin') && session && isSystemAdmin ? (
+            <AdminLegacyDashboard />
+          ) : (
+            <>
+              {mode === 'legacy' && session && (
+                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                  <span className="text-4xl mb-2">📦</span>
+                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
+                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
+                </div>
+              )}
+              {mode === 'admin' && session && (
+                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                  <span className="text-4xl mb-2">⚙️</span>
+                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
+                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
+                </div>
+              )}
+            </>
           )}
-          {mode === 'admin' && session && (
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-              <span className="text-4xl mb-2">⚙️</span>
-              <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Admin Management Console</h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">Manage item catalogue pricing files and create new physical store accounts securely using the left layout panel configurations.</p>
-            </div>
-          )}
+
           {mode === 'login' && !session && (
             <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
               <span className="text-4xl mb-2">🔒</span>

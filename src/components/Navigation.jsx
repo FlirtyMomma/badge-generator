@@ -20,7 +20,7 @@ export default function Navigation({ mode, setMode, isSystemAdmin, session, stor
           onClick={() => setMode('legacy')} 
           className={`flex-1 min-w-[70px] py-1.5 rounded-md transition-all ${mode === 'legacy' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-50'}`}
         >
-          📦 {storeId || 'Store'} Portal
+          📦 {storeId || 'Store'} Legacy
         </button>
       ) : (
         <button 
