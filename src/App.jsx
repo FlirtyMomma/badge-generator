@@ -7,6 +7,7 @@ import SavedBatchList from './components/SavedBatchList';
 import LegacyStoreCount from './components/LegacyStoreCount';
 import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
+import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 
 function App() {
   const [mode, setMode] = useState(() => localStorage.getItem('onebeyond_active_tab') || 'badges');
@@ -209,11 +210,16 @@ function App() {
                 <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
               )}
               {mode === 'legacy' && (
-                <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
-                  <span className="text-4xl mb-2">📦</span>
-                  <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
-                  <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
-                </div>
+                // FIXED: Automatically checks profile permissions. Admins see the master ledger, stores see the helper text panel.
+                storeId === 'ADMIN' || isAdminAuthenticated || session?.user?.email?.includes('admin') ? (
+                  <AdminLegacyDashboard />
+                ) : (
+                  <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">
+                    <span className="text-4xl mb-2">📦</span>
+                    <h3 className="text-sm font-black uppercase text-gray-700 tracking-wide">Legacy Vault Audit Mode</h3>
+                    <p className="text-xs text-gray-400 mt-1 max-w-sm">Active logging configuration and cloud sync systems are live in your primary viewport on the left panel.</p>
+                  </div>
+                )
               )}
             </>
           ) : null}
