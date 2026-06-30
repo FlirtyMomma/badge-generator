@@ -58,7 +58,7 @@ export default function AdminLegacyDashboard() {
 
     setDiagnosticLog(logStr);
 
-    // Primary relational query loop
+// Primary relational query loop with explicit safe formatting
     const { data, error } = await supabase
       .from('legacy_stock_counts')
       .select(`
@@ -69,6 +69,7 @@ export default function AdminLegacyDashboard() {
         product_name,
         quantity,
         season_type,
+        user_id,
         store_profiles ( store_id, store_name ),
         store_products ( price )
       `)
@@ -78,10 +79,15 @@ export default function AdminLegacyDashboard() {
       const formatted = data.map(item => {
         const livePriceString = item.store_products?.price || "£0.00";
         const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
+        
+        // FIXED: Fallback to a slice of the User ID if no profile record exists yet
+        const displayStoreId = item.store_profiles?.store_id || `ID-${item.user_id?.substring(0, 4)}`;
+        const displayStoreName = item.store_profiles?.store_name || 'Unlinked Terminal';
+
         return {
           ...item,
-          storeId: item.store_profiles?.store_id || 'UNKNOWN',
-          storeName: item.store_profiles?.store_name || 'Unknown Store',
+          storeId: displayStoreId,
+          storeName: displayStoreName,
           livePriceString,
           parsedPrice,
           totalItemValue: parsedPrice * item.quantity
