@@ -84,7 +84,13 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       const formattedData = data.map(item => {
         const livePriceString = item.store_products?.price || "£0.00";
         const parsedPrice = parseFloat(livePriceString.replace(/[^0-9.]/g, '')) || 0;
-        return { ...item, livePriceString, parsedPrice };
+        
+        // Safety check to ensure the row never gets hidden due to a profile string quirk
+        return { 
+          ...item, 
+          livePriceString, 
+          parsedPrice 
+        };
       });
       setSessionList(formattedData);
     }
