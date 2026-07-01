@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Multi-stage relational unique pallet transfer
+  // CORE INTERCEPT: Multi-stage unique pallet identification & destination auto-increment transfer
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -85,7 +85,6 @@ export default function ScanPanel({
       // If the master tracking pallet doesn't exist yet, look up who has those items counted right now
       let sourceUserUuid = null;
       if (activePalletRecord) {
-        // Find the user UUID associated with the old store that owns this pallet wrapper row
         const { data: oldProfile } = await supabase
           .from('store_profiles')
           .select('id')
@@ -194,44 +193,38 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: RELATIONAL INVENTORY MIGRATION
-        // Target rows filtering specifically by the source user UUID (who owned it) to ensure exact record reassignment
-        let query = supabase.from('legacy_stock_counts').update({ 
-          user_id: session.user.id,        // Changes database ownership to the current user's authenticated terminal account
-          pallet_number: destinationPalletKey // Assigns it to the new incremental layout key
-        });
+        // PHASE 2: DIAGNOSTIC RELATIONAL INVENTORY MIGRATION
+        const { data: sampleRows } = await supabase
+          .from('legacy_stock_counts')
+          .select('pallet_number, season_type')
+          .ilike('season_type', `%${targetSeasonSearchString}%`)
+          .limit(5);
 
-        if (sourceUserUuid) {
-          // Strict Match path: Lock onto the specific source user account and literal old label number
-          query = query.eq('user_id', sourceUserUuid).eq('pallet_number', targetPalletSearchNumber);
-        } else {
-          // Broad Fallback path: If user data was missing, match across generic rows for that simple code configuration
-          query = query.eq('pallet_number', targetPalletSearchNumber);
+        if (!sampleRows || sampleRows.length === 0) {
+          alert(`Diagnostic Error:\n\nNo stock lines found in your database table for the season "${targetSeasonSearchString}" at all.\n\nPlease check your spelling or verify that counts have been uploaded.`);
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
         }
 
-        const { data: movedRows, error: inventoryError } = await query.eq('season_type', targetSeasonSearchString).select();
+        console.log("Database Sample Formats found:", sampleRows);
+
+        // Execute relational shift using multiple layout string format variables to guarantee a match lock
+        const { data: movedRows, error: inventoryError } = await supabase
+          .from('legacy_stock_counts')
+          .update({ 
+            user_id: session.user.id,        
+            pallet_number: destinationPalletKey 
+          })
+          .eq('season_type', targetSeasonSearchString)
+          .or(`pallet_number.eq.${targetPalletSearchNumber},pallet_number.eq.Pallet ${targetPalletSearchNumber},pallet_number.eq.${originalPalletNum}`)
+          .select();
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
         } else if (!movedRows || movedRows.length === 0) {
-          // Broad text fallback filter block to catch customized entries
-          const { data: fallbackRows, error: fallbackError } = await supabase
-            .from('legacy_stock_counts')
-            .update({ 
-              user_id: session.user.id,
-              pallet_number: destinationPalletKey
-            })
-            .ilike('pallet_number', `%${targetPalletSearchNumber}%`)
-            .ilike('season_type', `%${targetSeasonSearchString}%`)
-            .select();
-
-          if (fallbackError) {
-            alert(`Fallback inventory query encountered an error: ${fallbackError.message}`);
-          } else if (!fallbackRows || fallbackRows.length === 0) {
-            alert(`Warning: Pallet registry updated, but 0 item lines found matching criteria (Pallet: "${targetPalletSearchNumber}", Season: "${targetSeasonSearchString}"). Please verify that counts exist under this seasonal segment.`);
-          } else {
-            alert(`Success! Handled broad-match transfer. Securely reassigned ${fallbackRows.length} item stock lines to Store ${storeId} as Pallet ${nextPalletNum}.`);
-          }
+          const sampleList = sampleRows.map(r => `Pallet: "${r.pallet_number}" | Season: "${r.season_type}"`).join('\n');
+          alert(`Match Failure (0 rows updated):\n\nYour manifest wanted Pallet "${targetPalletSearchNumber}" for "${targetSeasonSearchString}".\n\nBut here is what your database actually contains:\n${sampleList}\n\nPlease update your print configuration or input values to match.`);
         } else {
           alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}.`);
         }
