@@ -167,14 +167,15 @@ export default function ScanPanel({
         }
 
         // PHASE 2: Re-allocate item lines inside public.legacy_stock_counts
-        // Shifts the record to the target unique pallet key and signs it to the active terminal user UUID
+        // Targets original user data rows matching literal pallet input numbers and the season text
         const { error: inventoryError } = await supabase
           .from('legacy_stock_counts')
           .update({ 
-            user_id: session.user.id, // Reassigns user ownership to current terminal
-            pallet_number: destinationPalletKey 
+            user_id: session.user.id,        // Shifts row tracking to the current user profile account
+            pallet_number: destinationPalletKey // Assigns it to the newly incremented target profile key
           })
-          .eq('pallet_number', sourcePalletLookupKey);
+          .eq('pallet_number', originalPalletNum)
+          .eq('season_type', season);
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
