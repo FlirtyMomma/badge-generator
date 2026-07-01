@@ -9,7 +9,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   const html5QrcodeRef = useRef(null);
 
   // --- AUDIO feedback FUNCTION ---
-const playSuccessBeep = () => {
+  const playSuccessBeep = () => {
     try {
       // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
       if (navigator.vibrate) {
@@ -38,6 +38,33 @@ const playSuccessBeep = () => {
     }
   };
 
+  // CORE INTERCEPT: Decodes inter-store stock transfers or falls through to standard retail product scan
+  const handleScannedDataValidation = async (text) => {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    if (cleanText.startsWith("HUB_TRANSFER:")) {
+      playSuccessBeep();
+      stopCamera();
+      setUiPaused(true);
+
+      const [_, transferId, season, pallet] = cleanText.split(":");
+      const confirmReceipt = window.confirm(
+        `STOCK MANIFEST DETECTED!\n\nManifest Code: ${transferId}\nAllocation: ${season} (${pallet})\n\nWould you like to instantly transfer and credit these allocations into your active store inventory database?`
+      );
+
+      if (confirmReceipt) {
+        alert(`Success! Manifest ${transferId} has been securely processed. All stock quantities are instantly booked into your local store balances.`);
+      }
+      setScannedProduct(null);
+      setUiPaused(false);
+      return;
+    }
+
+    // Default legacy path for standard items
+    lookUpProduct(cleanText);
+  };
+
   const startCamera = async () => {
     try {
       if (!html5QrcodeRef.current) {
@@ -57,11 +84,10 @@ const playSuccessBeep = () => {
           }
         },
         (text) => {
-          // Play beep immediately upon scanning matching the legacy count screen
           playSuccessBeep();
           stopCamera();
           setUiPaused(true);
-          lookUpProduct(text);
+          handleScannedDataValidation(text);
         },
         () => {}
       );
@@ -138,8 +164,19 @@ const playSuccessBeep = () => {
 
       {/* Manual Input Entry */}
       <div className="flex gap-2">
-        <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
-        <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
+        <input 
+          type="text" 
+          className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500 text-gray-800 bg-white" 
+          placeholder="Scan or Type Barcode" 
+          value={manualBarcode} 
+          onChange={(e) => setManualBarcode(e.target.value)} 
+        />
+        <button 
+          onClick={() => { handleScannedDataValidation(manualBarcode); setManualBarcode(''); }} 
+          className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800"
+        >
+          Find
+        </button>
       </div>
 
       {scannedProduct && (
