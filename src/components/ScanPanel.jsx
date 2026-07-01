@@ -8,13 +8,15 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   const [uiPaused, setUiPaused] = useState(false);
   const html5QrcodeRef = useRef(null);
 
-  // --- AUDIO feedback FUNCTION ---
+  // --- AUDIO FEEDBACK FUNCTION ---
   const playSuccessBeep = () => {
     try {
+      // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
       if (navigator.vibrate) {
         navigator.vibrate(100);
       }
 
+      // 2. Play the piercing square-wave audio tone
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       
@@ -36,6 +38,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
     }
   };
 
+  // CORE INTERCEPT: Decodes inter-store stock transfers or falls through to standard retail product scan
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -58,6 +61,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       return;
     }
 
+    // Default legacy path for standard items
     lookUpProduct(cleanText);
   };
 
@@ -68,27 +72,12 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       }
       if (html5QrcodeRef.current.isScanning) return;
 
-      // HARDWARE ACCELERATION LOCK: Query all available on-board camera sensors
-      const devices = await Html5Qrcode.getCameras();
-      let targetCameraId = null;
-
-      if (devices && devices.length > 0) {
-        // Filter specifically for lenses containing "back", "environment", or "rear" descriptor keys
-        const backCamera = devices.find(device => 
-          device.label.toLowerCase().includes('back') || 
-          device.label.toLowerCase().includes('environment') ||
-          device.label.toLowerCase().includes('rear')
-        );
-        
-        // Fallback: If no labels match text rules, take the absolute last sensor in the index array 
-        // (Standard mobile architectures assign the primary wide back lens to the end of the array string)
-        targetCameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
-      }
-
+      // STRICT ENVIRONMENT CONSTRAINT: Enforces a hard hardware lock on the primary rear wide lens
       const scanConfig = {
-        fps: 15,
+        fps: 20, 
         qrbox: { width: 260, height: 160 },
         videoConstraints: {
+          facingMode: { exact: "environment" },
           width: { ideal: 1920, min: 1080 },
           height: { ideal: 1080, min: 720 }
         }
@@ -101,16 +90,39 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         handleScannedDataValidation(text);
       };
 
-      // Force camera initialize via ID parameter block or generic selector fallback
-      if (targetCameraId) {
-        await html5QrcodeRef.current.start(targetCameraId, scanConfig, onScanSuccess, () => {});
-      } else {
-        await html5QrcodeRef.current.start({ facingMode: "environment" }, scanConfig, onScanSuccess, () => {});
-      }
+      // Attempt to launch using strict back-camera properties
+      await html5QrcodeRef.current.start(
+        { facingMode: { exact: "environment" } }, 
+        scanConfig, 
+        onScanSuccess, 
+        () => {}
+      );
 
       setIsScanning(true);
     } catch (err) {
-      console.error("Camera failed to start:", err);
+      console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
+      
+      // FALLBACK COUPLING: Drops back to a standard environmental hook if exact mode is blocked by the OS driver
+      try {
+        await html5QrcodeRef.current.start(
+          { facingMode: "environment" },
+          {
+            fps: 15,
+            qrbox: { width: 260, height: 160 }
+          },
+          (text) => {
+            playSuccessBeep();
+            stopCamera();
+            setUiPaused(true);
+            handleScannedDataValidation(text);
+          },
+          () => {}
+        );
+        setIsScanning(true);
+      } catch (fallbackErr) {
+        console.error("Absolute camera acquisition failure across all sensors:", fallbackErr);
+        alert("Camera Initialization Failure: Please verify that rear camera usage permissions are explicitly granted within your mobile web browser privacy console.");
+      }
     }
   };
 
@@ -147,6 +159,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
 
   return (
     <div className="space-y-4">
+      {/* Camera layout block */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="reader" className="w-full"></div>
         
@@ -178,6 +191,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         )}
       </div>
 
+      {/* Manual Input Entry Form layout */}
       <div className="flex gap-2">
         <input 
           type="text" 
