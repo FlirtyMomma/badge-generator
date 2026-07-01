@@ -471,18 +471,19 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           </button>
         )}
 
-        {/* PRINT-ONLY PHYSICAL LABEL LAYOUT */}
-        <div className="hidden print:block p-4 font-sans text-black bg-white w-full max-w-2xl mx-auto">
-          <div className="border-4 border-black p-6 space-y-4 rounded-lg">
+        {/* FIXED FULLY BREAKOUT PRINT LABEL ELEMENT */}
+        <div className="hidden print:block absolute inset-0 left-0 top-0 bg-white text-black p-8 z-[99999] w-full h-full min-w-full font-sans">
+          <div className="border-4 border-black p-6 space-y-4 rounded-lg bg-white">
+            
             <div className="border-b-4 border-black pb-4 text-center">
-              <h1 className="text-3xl font-black uppercase tracking-tight">ONEBEYOND AUDIT MANIFEST</h1>
-              <div className="grid grid-cols-2 text-sm font-bold mt-2 uppercase tracking-wide">
+              <h1 className="text-3xl font-black uppercase tracking-tight text-black">ONEBEYOND AUDIT MANIFEST</h1>
+              <div className="grid grid-cols-2 text-sm font-bold mt-2 uppercase tracking-wide text-black">
                 <div className="text-left">Store Node: <span className="underline">{session?.user?.email?.split('@')[0].toUpperCase()}</span></div>
                 <div className="text-right">Generated: <span className="underline">{new Date().toLocaleDateString('en-GB')}</span></div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 border-b-4 border-black pb-4 text-center items-center">
+            <div className="grid grid-cols-2 gap-4 border-b-4 border-black pb-4 text-center items-center text-black">
               <div className="border-r-2 border-black py-2">
                 <span className="block text-xs font-black uppercase text-gray-500">AUDIT TARGET ZONE</span>
                 <span className="text-xl font-black uppercase">{viewSeason}</span>
@@ -493,7 +494,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
               </div>
             </div>
 
-            <table className="w-full text-left text-xs border-collapse mt-4">
+            <table className="w-full text-left text-xs border-collapse mt-4 text-black">
               <thead>
                 <tr className="border-b-2 border-black font-black uppercase text-[10px]">
                   <th className="py-1">Barcode Index</th>
@@ -503,19 +504,20 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
               </thead>
               <tbody className="divide-y border-b-2 border-black font-medium">
                 {filteredDisplayList.map(item => (
-                  <tr key={item.id} className="py-1">
+                  <tr key={item.id} className="border-b border-black/10">
                     <td className="font-mono font-bold py-1.5">{item.barcode}</td>
-                    <td className="uppercase font-semibold truncate max-w-[220px] py-1.5">{item.product_name}</td>
+                    <td className="uppercase font-semibold py-1.5">{item.product_name}</td>
                     <td className="text-right font-black text-sm py-1.5">x{item.quantity}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            <div className="flex justify-between items-center pt-2 text-sm font-black uppercase">
+            <div className="flex justify-between items-center pt-2 text-sm font-black uppercase text-black">
               <span>Total Units Counted: {filteredDisplayList.reduce((acc, item) => acc + item.quantity, 0)}</span>
               <span className="text-base">Est Valuation: £{filteredPalletValue.toFixed(2)}</span>
             </div>
+
           </div>
         </div>
 
