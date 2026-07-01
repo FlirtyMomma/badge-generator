@@ -25,6 +25,8 @@ function App() {
   const contentRef = useRef(null);
 
   const [session, setSession] = useState(null);
+  // NEW: Add a loading state so the app doesn't panic before Supabase connects
+  const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [storeId, setStoreId] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
   const [emailInput, setEmailInput] = useState('');
@@ -49,11 +51,12 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
+  // UPDATED: Only boot the user to the scanner IF auth has completely finished loading
   useEffect(() => {
-    if (!session && ['badges', 'legacy', 'stockTake', 'history', 'admin'].includes(mode)) {
+    if (!isAuthLoading && !session && ['badges', 'legacy', 'stockTake', 'history', 'admin'].includes(mode)) {
       setMode('priceCheck');
     }
-  }, [session, mode]);
+  }, [session, mode, isAuthLoading]);
 
   const handleLogoutStore = async () => {
     try {
@@ -99,10 +102,12 @@ function App() {
     };
   }, [session]);
 
+  // UPDATED: Tell the app when Supabase has finished its initial check
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       if (currentSession) fetchStoreProfile(currentSession.user.id);
+      setIsAuthLoading(false); // Connection check complete
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
@@ -113,6 +118,7 @@ function App() {
         setStoreId('');
         setIsSystemAdmin(false);
       }
+      setIsAuthLoading(false); // State updated
     });
 
     return () => subscription.unsubscribe();
@@ -167,6 +173,11 @@ function App() {
   };
 
   const isDataDenseView = mode === 'admin' || mode === 'stockTake' || mode === 'history';
+
+  // Optional: Prevent the screen from flashing empty boxes while Supabase checks the session
+  if (isAuthLoading) {
+    return <div className="min-h-screen bg-gray-100 flex items-center justify-center font-bold text-gray-400">Loading Terminal...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
