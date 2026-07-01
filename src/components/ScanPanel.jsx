@@ -11,12 +11,10 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
   // --- AUDIO feedback FUNCTION ---
   const playSuccessBeep = () => {
     try {
-      // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
       if (navigator.vibrate) {
         navigator.vibrate(100);
       }
 
-      // 2. Play the piercing square-wave audio tone
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       
@@ -38,7 +36,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
     }
   };
 
-  // CORE INTERCEPT: Decodes inter-store stock transfers or falls through to standard retail product scan
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -61,7 +58,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       return;
     }
 
-    // Default legacy path for standard items
     lookUpProduct(cleanText);
   };
 
@@ -72,25 +68,46 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       }
       if (html5QrcodeRef.current.isScanning) return;
 
-      await html5QrcodeRef.current.start(
-        { facingMode: "environment" },
-        {
-          fps: 15,
-          qrbox: { width: 260, height: 160 },
-          videoConstraints: {
-            width: { ideal: 1920, min: 1080 },
-            height: { ideal: 1080, min: 720 },
-            facingMode: "environment"
-          }
-        },
-        (text) => {
-          playSuccessBeep();
-          stopCamera();
-          setUiPaused(true);
-          handleScannedDataValidation(text);
-        },
-        () => {}
-      );
+      // HARDWARE ACCELERATION LOCK: Query all available on-board camera sensors
+      const devices = await Html5Qrcode.getCameras();
+      let targetCameraId = null;
+
+      if (devices && devices.length > 0) {
+        // Filter specifically for lenses containing "back", "environment", or "rear" descriptor keys
+        const backCamera = devices.find(device => 
+          device.label.toLowerCase().includes('back') || 
+          device.label.toLowerCase().includes('environment') ||
+          device.label.toLowerCase().includes('rear')
+        );
+        
+        // Fallback: If no labels match text rules, take the absolute last sensor in the index array 
+        // (Standard mobile architectures assign the primary wide back lens to the end of the array string)
+        targetCameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+      }
+
+      const scanConfig = {
+        fps: 15,
+        qrbox: { width: 260, height: 160 },
+        videoConstraints: {
+          width: { ideal: 1920, min: 1080 },
+          height: { ideal: 1080, min: 720 }
+        }
+      };
+
+      const onScanSuccess = (text) => {
+        playSuccessBeep();
+        stopCamera();
+        setUiPaused(true);
+        handleScannedDataValidation(text);
+      };
+
+      // Force camera initialize via ID parameter block or generic selector fallback
+      if (targetCameraId) {
+        await html5QrcodeRef.current.start(targetCameraId, scanConfig, onScanSuccess, () => {});
+      } else {
+        await html5QrcodeRef.current.start({ facingMode: "environment" }, scanConfig, onScanSuccess, () => {});
+      }
+
       setIsScanning(true);
     } catch (err) {
       console.error("Camera failed to start:", err);
@@ -130,7 +147,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
 
   return (
     <div className="space-y-4">
-      {/* Camera box */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="reader" className="w-full"></div>
         
@@ -162,7 +178,6 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         )}
       </div>
 
-      {/* Manual Input Entry */}
       <div className="flex gap-2">
         <input 
           type="text" 
