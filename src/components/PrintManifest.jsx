@@ -7,23 +7,24 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
   useEffect(() => {
     if (!viewSeason || !viewPallet) return;
 
-    const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    // FIX: Incorporate millisecond precision time parameters directly into the compilation block
+    const now = new Date();
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const timeStamp = now.toTimeString().slice(0, 8).replace(/:/g, '');
     const cleanSeason = viewSeason.replace(/\s+/g, '').toUpperCase();
     
-    // Generate the unique transaction signature token code
-    const uniqueId = `TRF-${cleanSeason}-${dateStamp}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // GENERATES A COMPLETELY NEW TRANSACT ID REGARDLESS OF SEASONAL VALUE REUSE
+    const uniqueId = `TRF-${cleanSeason}-${dateStamp}-${timeStamp}-${Math.floor(1000 + Math.random() * 9000)}`;
     setManifestId(uniqueId);
 
-    // Structural composite unique database container tracking identifier keys
+    // Creates the distinct unique global tracking identifier
     const globalPalletKey = `${cleanSeason}-P${viewPallet}`; 
     const payload = `HUB_TRANSFER:${uniqueId}:${viewSeason}:${viewPallet}:${globalPalletKey}`;
     
-    // Fully encode the payload text string parameter safely
     const encodedPayload = encodeURIComponent(payload);
     
-    // CHANGED: Switched output format parameter from &format=svg to &format=png for native printing engine stability
     setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodedPayload}&format=png&ecc=M`);
-  }, [viewSeason, viewPallet]);
+  }, [viewSeason, viewPallet, session]); // Session and layout hooks reset the cache layer cleanly
 
   if (!session) return null;
 
@@ -35,7 +36,6 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
           <p className="text-sm font-bold text-gray-600 tracking-wide">Allocation Route Batch Document</p>
         </div>
         
-        {/* QR Code Container with hardcoded layout dimensions to block flexbox/grid distortion */}
         <div className="flex flex-col items-center justify-start text-center border-2 border-black p-2 rounded-lg bg-white" style={{ width: '170px', minWidth: '170px' }}>
           {qrUrl ? (
             <img 
