@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 export default function StoreStockTakeList({ session }) {
@@ -68,43 +68,28 @@ export default function StoreStockTakeList({ session }) {
     setLoading(false);
   };
 
-  const renderPrecisionBarcode = (codeString) => {
-    const cleanString = codeString.trim().replace(/[^0-9A-Za-z\-]/g, '') || "000000";
-    
-    let lines = [];
-    lines.push(1, 0, 1);
+  // Uses the global JsBarcode library loaded in index.html
+  const BarcodeRenderer = ({ value }) => {
+    const svgRef = useRef(null);
 
-    for (let i = 0; i < cleanString.length; i++) {
-      const num = cleanString.charCodeAt(i);
-      if (num % 2 === 0) {
-        lines.push(1, 1, 0, 0, 1, 0, 1, 1);
-      } else {
-        lines.push(1, 0, 1, 1, 0, 0, 1, 1);
+    useEffect(() => {
+      if (svgRef.current && window.JsBarcode) {
+        window.JsBarcode(svgRef.current, value, {
+          format: "CODE128",
+          width: 2.5,        // Thicker bars for easier scanning
+          height: 50,        // Taller for handheld lasers
+          displayValue: true,// Keep this true to help you verify the code visually
+          fontSize: 12,
+          margin: 5,
+          background: "#ffffff",
+          lineColor: "#000000"
+        });
       }
-    }
-
-    lines.push(1, 0, 1, 1, 1);
+    }, [value]);
 
     return (
-      <div className="flex flex-col items-center justify-center p-1 bg-white rounded border border-gray-100 shadow-2xs">
-        <svg 
-          className="h-14 w-48 min-w-[180px]" 
-          viewBox={`0 0 ${lines.length} 10`} 
-          preserveAspectRatio="none"
-          shapeRendering="crispEdges" 
-        >
-          {lines.map((bit, index) => bit === 1 && (
-            <rect 
-              key={index} 
-              x={index} 
-              y={0} 
-              width={1} 
-              height={10} 
-              fill="#000000" 
-            />
-          ))}
-        </svg>
-        <span className="text-[10px] font-mono font-black tracking-widest text-gray-500 mt-1">{cleanString}</span>
+      <div className="flex flex-col items-center bg-white p-1 rounded border border-gray-100 shadow-2xs">
+        <svg ref={svgRef}></svg>
       </div>
     );
   };
@@ -125,15 +110,13 @@ export default function StoreStockTakeList({ session }) {
         <button onClick={fetchStoreInventory} className="text-[9px] bg-gray-100 hover:bg-gray-200 px-2 py-0.5 rounded font-bold border">🔄 Refresh</button>
       </div>
 
-      <div>
-        <input 
-          type="text" 
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search by product description or barcode..." 
-          className="w-full border p-2 rounded-lg text-xs font-medium text-gray-800 bg-gray-50 outline-none focus:border-blue-500 shadow-inner"
-        />
-      </div>
+      <input 
+        type="text" 
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        placeholder="Search product description or barcode..." 
+        className="w-full border p-2 rounded-lg text-xs font-medium text-gray-800 bg-gray-50 outline-none focus:border-blue-500 shadow-inner"
+      />
 
       <div className="grid grid-cols-2 gap-2 text-center">
         <div className="bg-gray-50 border p-2 rounded-lg">
@@ -147,31 +130,18 @@ export default function StoreStockTakeList({ session }) {
       </div>
 
       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-        {filteredInventory.length === 0 ? (
-          <p className="text-center text-xs text-gray-400 py-8 italic bg-white rounded-lg border border-dashed">No items found matching criteria.</p>
-        ) : (
-          filteredInventory.map(item => (
-            <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 hover:bg-white transition-colors shadow-2xs">
-              
-              <div className="min-w-0 flex-1 space-y-1">
-                <h4 className="text-sm font-black text-gray-900 uppercase tracking-tight">{item.product_name}</h4>
-                <div className="text-xs font-medium text-gray-400">
-                  <span>Price: <strong className="text-gray-600">{item.priceString}</strong> each</span>
-                  <span className="mx-2">•</span>
-                  <span>Value: <strong className="text-gray-700">£{item.totalValue.toFixed(2)}</strong></span>
-                </div>
-                <div className="inline-block bg-gray-900 text-white text-xs font-black px-3 py-1 rounded-md mt-1">
-                  Total Counted: {item.total_quantity}
-                </div>
-              </div>
-              
-              <div className="flex-shrink-0 self-center lg:self-auto">
-                {renderPrecisionBarcode(item.barcode)}
-              </div>
-
+        {filteredInventory.map(item => (
+          <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex justify-between items-center shadow-2xs">
+            <div className="min-w-0 flex-1 space-y-1">
+              <h4 className="text-sm font-black text-gray-900 uppercase tracking-tight truncate">{item.product_name}</h4>
+              <p className="text-[10px] font-bold text-gray-500">Price: {item.priceString} each | Value: £{item.totalValue.toFixed(2)}</p>
+              <div className="inline-block bg-gray-900 text-white text-[16px] font-black px-2 py-0.5 rounded">Qty: {item.total_quantity}</div>
             </div>
-          ))
-        )}
+            <div className="flex-shrink-0 ml-4">
+              <BarcodeRenderer value={item.barcode} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
