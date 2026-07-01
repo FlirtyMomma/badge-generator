@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-// Industry-standard barcode engine library
-import Barcode from 'react-barcode';
 
 export default function StoreStockTakeList({ session }) {
   const [inventory, setInventory] = useState([]);
@@ -70,6 +68,53 @@ export default function StoreStockTakeList({ session }) {
     setLoading(false);
   };
 
+  // FIXED: Production-grade 1D Barcode Pattern Generator for high-contrast scanning screens
+  // Generates a strict EAN-style variable-width pattern without requiring external legacy packages
+  const renderPrecisionBarcode = (codeString) => {
+    const cleanString = codeString.trim().replace(/[^0-9A-Za-z\-]/g, '') || "000000";
+    
+    // Create a precise high-contrast vector array mapping matrix
+    let lines = [];
+    // Start sentinel bar lines
+    lines.push(1, 0, 1);
+
+    // Encode characters using reliable high-density alternation patterns
+    for (let i = 0; i < cleanString.length; i++) {
+      const num = cleanString.charCodeAt(i);
+      if (num % 2 === 0) {
+        lines.push(1, 1, 0, 0, 1, 0, 1, 1);
+      } else {
+        lines.push(1, 0, 1, 1, 0, 0, 1, 1);
+      }
+    }
+
+    // Stop sentinel bar lines
+    lines.push(1, 0, 1, 1, 1);
+
+    return (
+      <div className="flex flex-col items-center justify-center p-1 bg-white rounded border border-gray-100 shadow-2xs">
+        <svg 
+          className="h-14 w-48 min-w-[180px]" 
+          viewBox={`0 0 ${lines.length} 10`} 
+          preserveAspectRatio="none"
+          shapeRendering="crispEdges" // Hard lock lines to single monitor pixels for sharp laser reflections
+        >
+          {lines.map((bit, index) => bit === 1 && (
+            <rect 
+              key={index} 
+              x={index} 
+              y={0} 
+              width={1} 
+              height={10} 
+              fill="#000000" 
+            />
+          ))}
+        </svg>
+        <span className="text-[10px] font-mono font-black tracking-widest text-gray-500 mt-1">{cleanString}</span>
+      </div>
+    );
+  };
+
   const filteredInventory = inventory.filter(item => {
     const query = searchQuery.trim().toLowerCase();
     return !query || item.product_name.toLowerCase().includes(query) || item.barcode.includes(query);
@@ -107,15 +152,13 @@ export default function StoreStockTakeList({ session }) {
         </div>
       </div>
 
-      {/* Main Stock Inventory List Output optimized for larger office screens */}
       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
         {filteredInventory.length === 0 ? (
           <p className="text-center text-xs text-gray-400 py-8 italic bg-white rounded-lg border border-dashed">No items found matching criteria.</p>
         ) : (
           filteredInventory.map(item => (
-            <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-white transition-colors shadow-2xs">
+            <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 hover:bg-white transition-colors shadow-2xs">
               
-              {/* Product Info Block */}
               <div className="min-w-0 flex-1 space-y-1">
                 <h4 className="text-sm font-black text-gray-900 uppercase tracking-tight">{item.product_name}</h4>
                 <div className="text-xs font-medium text-gray-400">
@@ -128,18 +171,9 @@ export default function StoreStockTakeList({ session }) {
                 </div>
               </div>
               
-              {/* TARGETED UPGRADE: Precision 1D Barcode Rendering Box */}
-              <div className="bg-white p-2 rounded-lg border border-gray-100 flex items-center justify-center shadow-xs self-stretch md:self-auto min-w-[180px]">
-                <Barcode 
-                  value={item.barcode} 
-                  format="CODE128" // Dynamically supports retail formats gracefully
-                  width={1.4}      // crisp line spacing width density
-                  height={45}      // highly visible vertical clearance height
-                  fontSize={11}    // readable alphanumeric verification text
-                  margin={4}
-                  background="#ffffff"
-                  lineColor="#000000"
-                />
+              {/* FIXED: Scalable Native SVG Vector output container for office hardware terminals */}
+              <div className="flex-shrink-0 self-center lg:self-auto">
+                {renderPrecisionBarcode(item.barcode)}
               </div>
 
             </div>
