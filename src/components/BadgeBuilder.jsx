@@ -1,18 +1,16 @@
-import { useState, useEffect } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import Badge from './Badge';
 
-export default function BadgeBuilder({ contentRef, layoutMode = "leftColumn" }) {
-  const [staff, setStaff] = useState(() => {
-    const saved = localStorage.getItem('onebeyond_staff_list');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [form, setForm] = useState({ name: '', position: '', code: '' });
-  const [editingId, setEditingId] = useState(null);
-
-  useEffect(() => {
-    localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
-  }, [staff]);
+export default function BadgeBuilder({ 
+  contentRef, 
+  layoutMode = "leftColumn",
+  staff,
+  setStaff,
+  form,
+  setForm,
+  editingId,
+  setEditingId
+}) {
 
   const handlePrint = useReactToPrint({
     contentRef,
@@ -56,18 +54,21 @@ export default function BadgeBuilder({ contentRef, layoutMode = "leftColumn" }) 
           )}
         </form>
 
-        {/* Hidden Frame: Retained for generating print layout formatting sheets */}
+        {/* FIXED: Formatted layout to place 2 badges horizontally side-by-side with uniform distribution gaps */}
         <div className="hidden">
-          <div ref={contentRef} className="bg-white p-[10mm] w-[210mm] min-w-[210mm] min-h-[297mm] grid grid-cols-2 gap-x-4 gap-y-6 content-start">
+          <div 
+            ref={contentRef} 
+            className="print:grid bg-white p-[10mm] w-[210mm] min-w-[210mm] min-h-[297mm] grid grid-cols-2 gap-x-[10mm] gap-y-[8mm] justify-items-center content-start text-black fixed inset-0 z-[999999]"
+          >
             {staff.map((person) => (
-              <div key={person.id} className="relative flex justify-center w-[85mm] h-[55mm]">
+              <div key={person.id} className="relative flex justify-center w-[85mm] h-[55mm] break-inside-avoid">
                 <Badge {...person} />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Mobile-Only List: Automatically drops below the forms on phone view, completely hides on PC */}
+        {/* Mobile List Fallback */}
         {staff.length > 0 && (
           <div className="pt-4 border-t border-gray-200 xl:hidden no-print">
             <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider mb-3">Added Badges ({staff.length})</h3>
@@ -96,7 +97,6 @@ export default function BadgeBuilder({ contentRef, layoutMode = "leftColumn" }) 
           Active Badge Sheet Preview ({staff.length} Added)
         </h3>
         
-        {/* Dynamic Multi-Column Grid wrapping items gracefully */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[700px] overflow-y-auto p-2 justify-items-center">
           {staff.map((person) => (
             <div key={person.id} className="relative group flex justify-center w-[85mm] h-[55mm] shadow-md rounded-xl overflow-hidden hover:shadow-xl transition-shadow bg-white border">

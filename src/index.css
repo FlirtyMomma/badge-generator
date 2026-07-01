@@ -6,68 +6,6 @@
   --color-store-blue: #0044ff;
 }
 
-/* Print-specific tweaks */
-@media print {
-  .no-print {
-    display: none !important;
-  }
-  @page {
-    margin: 0;
-  }
-  body {
-    background-color: white;
-  }
-}
-
-/* --- LIGHTWEIGHT VIEWFINDER DISPLAY RULES --- */
-
-#reader {
-  max-width: 100% !important;
-  height: 200px !important; 
-  background-color: #111827; 
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Constrain the running camera viewport cleanly to 200px */
-#reader video {
-  width: 100% !important;
-  height: 200px !important; 
-  object-fit: cover !important; 
-}
-
-/* Smooth kinetic scrolling layout behavior for mobile batch files */
-div::-webkit-scrollbar {
-  width: 4px;
-}
-div::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 4px;
-}
-
-#reader video,
-#legacy-reader video {
-  width: 100% !important;
-  height: 200px !important; 
-  object-fit: cover !important; 
-}
-
-/* --- LIGHTWEIGHT VIEWFINDER DISPLAY RULES --- */
-
-#reader,
-#legacy-reader {
-  max-width: 100% !important;
-  height: 200px !important; /* FIXED: Prevents container collapse when the legacy camera shuts down */
-  background-color: #111827; /* Dark slate background matching layout */
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.75rem; /* Matches your rounded-xl utility styling */
-}
-
 /* ==========================================================================
    BULLETPROOF ENTERPRISE RETAIL PRINT ENGINE RESETS
    ========================================================================== */
@@ -85,11 +23,18 @@ div::-webkit-scrollbar-thumb {
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* 2. Hide every single operational app wrapper on the interface */
+  /* 2. Hide operational app wrappers on the interface EXCEPT our breakout targets */
   body > *:not(.print\:block),
-  #root > *,
+  #root > *:not(.print\:block),
+  #root *:not(.print\:block):has(.print\:block) {
+    /* Keeps parent tree open while hiding surrounding layout clutter */
+  }
+
+  /* Strict targets to hide */
   .no-print,
   nav,
   button,
@@ -104,17 +49,55 @@ div::-webkit-scrollbar-thumb {
   }
 
   /* 3. Force our target manifest breakout card to take over the paper surface */
-  .print\:block {
+  .print\:block,
+  div.print\:block {
     display: block !important;
     visibility: visible !important;
+    opacity: 1 !important;
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 100% !important;
+    width: 210mm !important; /* Forces uniform canvas sizing dimensions */
     max-width: 100% !important;
     height: auto !important;
     z-index: 9999999 !important;
-    padding: 20px !important;
+    padding: 10mm !important;
     box-sizing: border-box !important;
   }
+
+  @page {
+    margin: 0 !important;
+    size: auto;
+  }
+}
+
+/* --- LIGHTWEIGHT VIEWFINDER DISPLAY RULES --- */
+
+#reader,
+#legacy-reader {
+  max-width: 100% !important;
+  height: 200px !important; /* FIXED: Prevents container collapse when camera shuts down */
+  background-color: #111827; /* Dark slate background matching layout */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem; /* Matches rounded-xl utility styling */
+}
+
+/* Constrain the running camera viewport cleanly to 200px */
+#reader video,
+#legacy-reader video {
+  width: 100% !important;
+  height: 200px !important; 
+  object-fit: cover !important; 
+}
+
+/* Smooth kinetic scrolling layout behavior for mobile batch files */
+div::-webkit-scrollbar {
+  width: 4px;
+}
+div::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
 }
