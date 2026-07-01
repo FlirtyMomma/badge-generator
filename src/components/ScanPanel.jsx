@@ -50,7 +50,7 @@ export default function ScanPanel({
       setUiPaused(true);
 
       // 1. HARD SECURITY CHECK: Block unsigned terminals from executing modifications
-      if (!session || !storeId) {
+      if (!session || !storeId || !session.user?.id) {
         alert("Access Denied: You must be logged into a valid store terminal node to process stock transfers.");
         setScannedProduct(null);
         setUiPaused(false);
@@ -79,8 +79,35 @@ export default function ScanPanel({
         return;
       }
 
+      // If the pallet doesn't exist in the database yet, initialize it on the fly
+      if (!activePalletRecord) {
+        const confirmAutoCreate = window.confirm(
+          `PALLET REGISTRY NOT FOUND\n\nPallet ${originalPalletNum} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
+        );
+
+        if (!confirmAutoCreate) {
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+
+        const { data: newPallet, error: insertError } = await supabase
+          .from('store_pallets')
+          .insert({ pallet_id: sourcePalletLookupKey, current_owner_store_id: 'INITIAL_MANIFEST_ORIGIN' })
+          .select('current_owner_store_id')
+          .single();
+
+        if (insertError) {
+          alert(`Registry Initialization Failed: ${insertError.message}`);
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+        activePalletRecord = newPallet;
+      }
+
       // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns this exact season container tracking code
-      if (activePalletRecord && activePalletRecord.current_owner_store_id === storeId) {
+      if (activePalletRecord.current_owner_store_id === storeId) {
         alert(`Operation Cancelled: Store ${storeId} already holds the active registration for this seasonal stock container configuration.`);
         setScannedProduct(null);
         setUiPaused(false);
@@ -101,7 +128,6 @@ export default function ScanPanel({
         if (countError) throw countError;
         
         if (storePalletsForSeason && storePalletsForSeason.length > 0) {
-          // Parse the numbers to find the true mathematical maximum index owned
           const existingNumbers = storePalletsForSeason.map(p => {
             const parts = p.pallet_id.split('-P');
             return parts.length > 1 ? parseInt(parts[1], 10) : 0;
@@ -123,7 +149,7 @@ export default function ScanPanel({
       );
 
       if (confirmReceipt) {
-        // 5. TRANSACTION ENGINE PHASE 1: Create the target pallet record assigned to your new destination identifier key
+        // 5. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet container row
         const { error: updateError } = await supabase
           .from('store_pallets')
           .upsert({ 
@@ -140,14 +166,15 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: Re-allocate the item records seamlessly to the newly generated destination identifier sequence code
+        // PHASE 2: Re-allocate item lines inside public.legacy_stock_counts
+        // Shifts the record to the target unique pallet key and signs it to the active terminal user UUID
         const { error: inventoryError } = await supabase
-          .from('store_inventory')
+          .from('legacy_stock_counts')
           .update({ 
-            store_id: storeId,
-            associated_pallet_id: destinationPalletKey 
+            user_id: session.user.id, // Reassigns user ownership to current terminal
+            pallet_number: destinationPalletKey 
           })
-          .eq('associated_pallet_id', sourcePalletLookupKey);
+          .eq('pallet_number', sourcePalletLookupKey);
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
