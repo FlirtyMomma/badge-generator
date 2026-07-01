@@ -67,3 +67,54 @@ div::-webkit-scrollbar-thumb {
   justify-content: center;
   border-radius: 0.75rem; /* Matches your rounded-xl utility styling */
 }
+
+/* ==========================================================================
+   BULLETPROOF ENTERPRISE RETAIL PRINT ENGINE RESETS
+   ========================================================================== */
+@media print {
+  /* 1. Force wipe all background app structures, flex layers, and dashboard grids */
+  body, html, #root, .min-h-screen, grid, flex {
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    position: static !important;
+    transform: none !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 2. Hide every single operational app wrapper on the interface */
+  body > *:not(.print\:block),
+  #root > *,
+  .no-print,
+  nav,
+  button,
+  input,
+  select,
+  form {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* 3. Force our target manifest breakout card to take over the paper surface */
+  .print\:block {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    z-index: 9999999 !important;
+    padding: 20px !important;
+    box-sizing: border-box !important;
+  }
+}
