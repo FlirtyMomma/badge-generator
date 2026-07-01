@@ -7,24 +7,23 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
   useEffect(() => {
     if (!viewSeason || !viewPallet) return;
 
-    // FIX: Incorporate millisecond precision time parameters directly into the compilation block
     const now = new Date();
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+    // Capture hours, minutes, and seconds to guarantee absolute uniqueness per print request
     const timeStamp = now.toTimeString().slice(0, 8).replace(/:/g, '');
     const cleanSeason = viewSeason.replace(/\s+/g, '').toUpperCase();
     
-    // GENERATES A COMPLETELY NEW TRANSACT ID REGARDLESS OF SEASONAL VALUE REUSE
+    // Unique transaction request code
     const uniqueId = `TRF-${cleanSeason}-${dateStamp}-${timeStamp}-${Math.floor(1000 + Math.random() * 9000)}`;
     setManifestId(uniqueId);
 
-    // Creates the distinct unique global tracking identifier
-    const globalPalletKey = `${cleanSeason}-P${viewPallet}`; 
+    // CRITICAL FIX: Append the unique timestamp to the structural pallet identity key
+    const globalPalletKey = `${cleanSeason}-P${viewPallet}-${dateStamp}-${timeStamp}`; 
     const payload = `HUB_TRANSFER:${uniqueId}:${viewSeason}:${viewPallet}:${globalPalletKey}`;
     
     const encodedPayload = encodeURIComponent(payload);
-    
     setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodedPayload}&format=png&ecc=M`);
-  }, [viewSeason, viewPallet, session]); // Session and layout hooks reset the cache layer cleanly
+  }, [viewSeason, viewPallet, session]);
 
   if (!session) return null;
 
