@@ -9,6 +9,7 @@ import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 import StoreStockTakeList from './components/StoreStockTakeList';
+import PrintManifest from './components/PrintManifest';
 
 function App() {
   const [mode, setMode] = useState(() => {
@@ -28,6 +29,10 @@ function App() {
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Shared print state pipeline trackers
+  const [activePrintSeason, setActivePrintSeason] = useState('Mothers Day');
+  const [activePrintPallet, setActivePrintPallet] = useState('All');
 
   const [savedProducts, setSavedProducts] = useState(() => {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
@@ -237,6 +242,13 @@ function App() {
       </div>
 
       <BarcodeLightbox activeZoomBarcode={activeZoomBarcode} setActiveZoomBarcode={setActiveZoomBarcode} />
+
+      {/* CRITICAL ROUTING FIX: Renders independent of hidden app layouts */}
+      <PrintManifest 
+        session={session} 
+        viewSeason={activePrintSeason} 
+        viewPallet={activePrintPallet} 
+      />
     </div>
   );
 }
