@@ -21,6 +21,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
+  // FEATURE 2: High-contrast audio feedback oscillators
   const playSuccessBeep = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -41,6 +42,36 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       oscillator.stop(audioCtx.currentTime + 0.07); 
     } catch (err) {
       console.warn("Audio feedback context blocked or uninitialised:", err);
+    }
+  };
+
+  // FEATURE 2: Low-frequency error double buzzer
+  const playErrorBuzzer = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      
+      const audioCtx = new AudioContext();
+      
+      const playTone = (startTime, duration) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = 'sawtooth'; // Harsh tone for errors
+        osc.frequency.value = 150; // Low frequency buzz
+        gain.gain.setValueAtTime(0.2, startTime);
+        
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      // Play double-buzz burst pattern
+      playTone(audioCtx.currentTime, 0.12);
+      playTone(audioCtx.currentTime + 0.18, 0.12);
+    } catch (err) {
+      console.warn("Audio error feedback context blocked:", err);
     }
   };
 
@@ -107,14 +138,23 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     return () => { supabase.removeChannel(channel); };
   }, [viewSeason, session]);
 
+  // Handle dynamic audio routing when product details populate
+  useEffect(() => {
+    if (scannedProduct) {
+      if (scannedProduct.name === "Product Not Found") {
+        playErrorBuzzer(); // Instant audio warning for uncatalogued stock
+      } else {
+        playSuccessBeep();
+      }
+    }
+  }, [scannedProduct]);
+
   useEffect(() => {
     if (session) localStorage.setItem(`onebeyond_last_pallet_${session.user.id}`, pallet);
   }, [pallet, session]);
 
-  // FIXED: Explicitly define target bounding parameters for the engine algorithm
   const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-    // Create a precise horizontal slot optimized for retail barcodes
     const boxWidth = Math.floor(viewfinderWidth * 0.75);
     const boxHeight = Math.floor(minEdge * 0.35); 
     
@@ -132,14 +172,12 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       await html5QrcodeRef.current.start(
         { facingMode: "environment" },
         {
-          fps: 20, // Increased frame refresh speed for faster lock
+          fps: 20,
           qrbox: qrboxFunction,
-          // FIXED: Forces the image decoding matrix to ONLY analyze pixels inside the box bounds
           rememberLastUsedCamera: true,
-          supportedScanTypes: [0] // Decodes traditional 1D barcodes exclusively
+          supportedScanTypes: [0]
         },
         (text) => {
-          playSuccessBeep();
           stopCamera();
           setUiPaused(true);
           lookUpProduct(text);
@@ -170,66 +208,74 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
   }, [mode, uiPaused]);
 
   const handleCommitItem = async (e) => {
-      e.preventDefault();
-      // CRITICAL VALIDATION: Terminate early if the product was not found in the database catalogue
-      if (!scannedProduct || scannedProduct.name === "Product Not Found" || !quantity || parseInt(quantity) <= 0) {
-        alert("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
-        return;
-      }
+    if (e) e.preventDefault();
+    if (!scannedProduct || scannedProduct.name === "Product Not Found" || !quantity || parseInt(quantity) <= 0) {
+      alert("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
+      return;
+    }
 
-      setIsSubmitting(true);
-      const targetQuantity = parseInt(quantity);
-      const cleanPallet = pallet.trim();
+    setIsSubmitting(true);
+    const targetQuantity = parseInt(quantity);
+    const cleanPallet = pallet.trim();
 
-      const { data: existingRecords, error: checkError } = await supabase
-        .from('legacy_stock_counts')
-        .select('id, quantity')
-        .eq('user_id', session.user.id)
-        .eq('season_type', season)
-        .eq('pallet_number', cleanPallet)
-        .eq('barcode', scannedProduct.barcode);
+    const { data: existingRecords, error: checkError } = await supabase
+      .from('legacy_stock_counts')
+      .select('id, quantity')
+      .eq('user_id', session.user.id)
+      .eq('season_type', season)
+      .eq('pallet_number', cleanPallet)
+      .eq('barcode', scannedProduct.barcode);
 
-      if (checkError) {
-        alert("Database lookup error.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      let saveError = null;
-
-      if (existingRecords && existingRecords.length > 0) {
-        const existingItem = existingRecords[0];
-        const combinedQuantity = existingItem.quantity + targetQuantity;
-
-        const { error } = await supabase
-          .from('legacy_stock_counts')
-          .update({ quantity: combinedQuantity })
-          .eq('id', existingItem.id);
-        
-        saveError = error;
-      } else {
-        const newRecord = {
-          user_id: session.user.id,
-          season_type: season,
-          pallet_number: cleanPallet,
-          barcode: scannedProduct.barcode,
-          product_name: scannedProduct.name,
-          quantity: targetQuantity
-        };
-
-        const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
-        saveError = error;
-      }
-
-      if (!saveError) {
-        setScannedProduct(null);
-        setQuantity('1');
-        setUiPaused(false);
-      } else {
-        alert("Database error saving item.");
-      }
+    if (checkError) {
+      alert("Database lookup error.");
       setIsSubmitting(false);
-    };
+      return;
+    }
+
+    let saveError = null;
+
+    if (existingRecords && existingRecords.length > 0) {
+      const existingItem = existingRecords[0];
+      const combinedQuantity = existingItem.quantity + targetQuantity;
+
+      const { error } = await supabase
+        .from('legacy_stock_counts')
+        .update({ quantity: combinedQuantity })
+        .eq('id', existingItem.id);
+      
+      saveError = error;
+    } else {
+      const newRecord = {
+        user_id: session.user.id,
+        season_type: season,
+        pallet_number: cleanPallet,
+        barcode: scannedProduct.barcode,
+        product_name: scannedProduct.name,
+        quantity: targetQuantity
+      };
+
+      const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
+      saveError = error;
+    }
+
+    if (!saveError) {
+      setScannedProduct(null);
+      setQuantity('1');
+      setUiPaused(false);
+    } else {
+      alert("Database error saving item.");
+    }
+    setIsSubmitting(false);
+  };
+
+  // FEATURE 1: Quick-action multiplier math handler
+  const applyMultiplierAndSave = (value) => {
+    setQuantity(value.toString());
+    // Use timeout to let state apply before auto-submitting onto the ledger
+    setTimeout(() => {
+      handleCommitItem();
+    }, 50);
+  };
 
   const handleUpdateQuantity = async (id, currentQty) => {
     const newQty = prompt("Enter corrected quantity standard:", currentQty);
@@ -272,24 +318,16 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         </div>
       </div>
 
-      {/* Viewfinder Container Wrapper with Targeting Shutter Guides */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="legacy-reader" className="w-full"></div>
         
-        {/* FIXED: CSS Targeting Shutter Box. Shuts down light focus, highlighting only the strict ROI frame channel */}
         {isScanning && !uiPaused && (
           <div className="absolute inset-0 pointer-events-none flex flex-col justify-between items-center z-10">
-            {/* Top Shadow Shutter Mask */}
             <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
-            
-            {/* Clear Horizon Scan Target Line Slot Window */}
             <div className="w-3/4 aspect-[2.5/1] min-h-[120px] max-w-sm border-2 border-dashed border-blue-400 relative rounded flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-              {/* Laser Line Pointer Overlay */}
               <div className="w-full h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div>
               <span className="absolute bottom-1 text-[8px] font-black text-blue-400 uppercase tracking-widest bg-black/70 px-1 rounded">Align Barcode Here</span>
             </div>
-            
-            {/* Bottom Shadow Shutter Mask */}
             <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
           </div>
         )}
@@ -317,19 +355,78 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       </div>
 
       {scannedProduct && (
-        <form onSubmit={handleCommitItem} className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-center space-y-3">
-          <div>
-            <h4 className="text-xs font-black uppercase text-gray-400">Barcode Identified</h4>
-            <h3 className="text-sm font-black text-gray-900 uppercase truncate px-2">{scannedProduct.name}</h3>
-          </div>
-          <div className="flex items-center justify-center gap-3 max-w-[200px] mx-auto">
-            <label className="text-xs font-bold text-gray-600 uppercase">Qty:</label>
-            <input type="number" min="1" required value={quantity} onChange={e => setQuantity(e.target.value)} className="w-full border p-2 rounded-lg text-center text-base font-black text-gray-900 focus:border-emerald-500 outline-none bg-white shadow-sm" />
-          </div>
-          <button type="submit" disabled={isSubmitting} className="w-full bg-emerald-600 text-white text-xs font-black uppercase py-2.5 rounded-lg shadow-md tracking-wider">
-            {isSubmitting ? 'Saving...' : '✓ Log & Save Item'}
-          </button>
-        </form>
+        (() => {
+          const isInvalid = scannedProduct.name === "Product Not Found";
+          return (
+            <form 
+              onSubmit={handleCommitItem} 
+              className={`p-4 rounded-xl border-2 text-center space-y-3 ${
+                isInvalid 
+                  ? 'border-red-300 bg-red-50 text-red-900 animate-shake' 
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              }`}
+            >
+              <div>
+                <h4 className={`text-xs font-black uppercase ${isInvalid ? 'text-red-500 font-black' : 'text-gray-400'}`}>
+                  {isInvalid ? '⚠️ CRITICAL REJECTION' : 'Barcode Identified'}
+                </h4>
+                <h3 className="text-sm font-black uppercase truncate px-2 text-gray-900 mt-0.5">
+                  {scannedProduct.name}
+                </h3>
+                {isInvalid && (
+                  <p className="text-[10px] font-bold text-red-600 mt-0.5 px-4">
+                    This barcode does not exist in the corporate catalog ledger. Saving has been hard-blocked.
+                  </p>
+                )}
+              </div>
+
+              {!isInvalid && (
+                <>
+                  {/* FEATURE 1: Instant Case Multiplier Selection Keys */}
+                  <div className="space-y-1 pt-1">
+                    <span className="block text-[9px] font-black uppercase text-emerald-600 tracking-wider">⚡ Instant Case Multipliers (Log & Save)</span>
+                    <div className="grid grid-cols-4 gap-1.5 max-w-xs mx-auto">
+                      {[6, 12, 24, 48].map(amt => (
+                        <button 
+                          key={amt} 
+                          type="button" 
+                          onClick={() => applyMultiplierAndSave(amt)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-1.5 rounded-md shadow-2xs transition-colors"
+                        >
+                          +{amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative flex items-center justify-center gap-3 max-w-[160px] mx-auto pt-2 border-t border-emerald-100 mt-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Custom Qty:</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      required 
+                      value={quantity} 
+                      onChange={e => setQuantity(e.target.value)} 
+                      className="w-full border p-1.5 rounded-lg text-center text-sm font-black text-gray-900 focus:border-emerald-500 outline-none bg-white shadow-sm" 
+                    />
+                  </div>
+                </>
+              )}
+
+              <button 
+                type="submit" 
+                disabled={isSubmitting || isInvalid} 
+                className={`w-full text-xs font-black uppercase py-2.5 rounded-lg shadow-md tracking-wider transition-colors ${
+                  isInvalid 
+                    ? 'bg-red-200 text-red-500 cursor-not-allowed opacity-60' 
+                    : 'bg-gray-900 text-white hover:bg-black mt-2'
+                }`}
+              >
+                {isInvalid ? 'Cannot Save Unknown Barcode' : isSubmitting ? 'Committing...' : '✓ Save Custom Quantity'}
+              </button>
+            </form>
+          );
+        })()
       )}
 
       <div className="pt-4 border-t border-gray-200">
