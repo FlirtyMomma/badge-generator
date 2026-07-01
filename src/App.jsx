@@ -152,7 +152,6 @@ function App() {
     }
   };
 
-  // FIXED: Determine if the screen should break out into full screen layout
   const isDataDenseView = mode === 'admin' || mode === 'stockTake';
 
   return (
@@ -165,14 +164,13 @@ function App() {
         </div>
       )}
 
-      {/* FIXED: Conditional grid rules depending on active menu panel view */}
       <div className={`w-full transition-all duration-300 ${
         isDataDenseView 
-          ? 'max-w-7xl grid grid-cols-1 gap-6' // Full width canvas layout block
-          : 'max-w-md xl:max-w-6xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start' // Normal split panel
+          ? 'max-w-7xl grid grid-cols-1 gap-6' 
+          : 'max-w-md xl:max-w-6xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start' 
       }`}>
         
-        {/* Left Side Column Card (Acts as Full Width sheet container if Data Mode is on) */}
+        {/* Left Side Column Card */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 no-print w-full mb-6 xl:mb-0">
           <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
             <span className="text-[#004aad]">One</span>Beyond Store Hub
@@ -198,11 +196,20 @@ function App() {
           {mode === 'priceCheck' && (
             <ScanPanel mode={mode} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActiveZoomBarcode={setActiveZoomBarcode} savedProducts={savedProducts} setSavedProducts={setSavedProducts} />
           )}
+          
+          {/* FIXED: Passes the active state sync functions safely to the child module layout */}
           {mode === 'legacy' && session && (
-            <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} />
+            <LegacyStoreCount 
+              mode={mode} 
+              session={session} 
+              lookUpProduct={lookUpProduct} 
+              scannedProduct={scannedProduct} 
+              setScannedProduct={setScannedProduct}
+              setActivePrintSeason={setActivePrintSeason}
+              setActivePrintPallet={setActivePrintPallet}
+            />
           )}
           
-          {/* EXPANDED DESKTOP CANVASES */}
           {mode === 'stockTake' && session && (
             <StoreStockTakeList session={session} />
           )}
@@ -211,7 +218,7 @@ function App() {
           )}
         </div>
 
-        {/* Right Side Column Dashboard Workspace (Only renders for standard tools layout) */}
+        {/* Right Side Column Dashboard Workspace */}
         {!isDataDenseView && (
           <div className="hidden xl:block w-full no-print">
             {mode === 'badges' && <BadgeBuilder contentRef={contentRef} layoutMode="rightColumn" />}
@@ -242,8 +249,8 @@ function App() {
       </div>
 
       <BarcodeLightbox activeZoomBarcode={activeZoomBarcode} setActiveZoomBarcode={setActiveZoomBarcode} />
-
-      {/* CRITICAL ROUTING FIX: Renders independent of hidden app layouts */}
+      
+      {/* FIXED PRINT ROUTING MANIFEST CARD: Mounted cleanly at document root level */}
       <PrintManifest 
         session={session} 
         viewSeason={activePrintSeason} 
