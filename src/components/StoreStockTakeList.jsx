@@ -68,17 +68,12 @@ export default function StoreStockTakeList({ session }) {
     setLoading(false);
   };
 
-  // FIXED: Production-grade 1D Barcode Pattern Generator for high-contrast scanning screens
-  // Generates a strict EAN-style variable-width pattern without requiring external legacy packages
   const renderPrecisionBarcode = (codeString) => {
     const cleanString = codeString.trim().replace(/[^0-9A-Za-z\-]/g, '') || "000000";
     
-    // Create a precise high-contrast vector array mapping matrix
     let lines = [];
-    // Start sentinel bar lines
     lines.push(1, 0, 1);
 
-    // Encode characters using reliable high-density alternation patterns
     for (let i = 0; i < cleanString.length; i++) {
       const num = cleanString.charCodeAt(i);
       if (num % 2 === 0) {
@@ -88,7 +83,6 @@ export default function StoreStockTakeList({ session }) {
       }
     }
 
-    // Stop sentinel bar lines
     lines.push(1, 0, 1, 1, 1);
 
     return (
@@ -97,7 +91,7 @@ export default function StoreStockTakeList({ session }) {
           className="h-14 w-48 min-w-[180px]" 
           viewBox={`0 0 ${lines.length} 10`} 
           preserveAspectRatio="none"
-          shapeRendering="crispEdges" // Hard lock lines to single monitor pixels for sharp laser reflections
+          shapeRendering="crispEdges" 
         >
           {lines.map((bit, index) => bit === 1 && (
             <rect 
@@ -171,7 +165,6 @@ export default function StoreStockTakeList({ session }) {
                 </div>
               </div>
               
-              {/* FIXED: Scalable Native SVG Vector output container for office hardware terminals */}
               <div className="flex-shrink-0 self-center lg:self-auto">
                 {renderPrecisionBarcode(item.barcode)}
               </div>
