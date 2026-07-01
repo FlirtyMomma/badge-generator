@@ -10,6 +10,7 @@ import BarcodeLightbox from './components/BarcodeLightbox';
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 import StoreStockTakeList from './components/StoreStockTakeList';
 import PrintManifest from './components/PrintManifest';
+import TransferHistory from './components/TransferHistory';
 
 function App() {
   const [mode, setMode] = useState(() => {
@@ -160,7 +161,7 @@ function App() {
     }
   };
 
-  const isDataDenseView = mode === 'admin' || mode === 'stockTake';
+  const isDataDenseView = mode === 'admin' || mode === 'stockTake' || mode === 'history';
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
@@ -217,15 +218,20 @@ function App() {
               setActiveZoomBarcode={setActiveZoomBarcode} 
               savedProducts={savedProducts} 
               setSavedProducts={setSavedProducts}
-              session={session} // PASSED DOWN
-              storeId={storeId} // PASSED DOWN
+              session={session} 
+              storeId={storeId} 
             />
           )}
+          
           {mode === 'legacy' && session && (
             <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActivePrintSeason={setActivePrintSeason} setActivePrintPallet={setActivePrintPallet} />
           )}
+          
           {mode === 'stockTake' && session && <StoreStockTakeList session={session} />}
+          
           {mode === 'admin' && session && <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} />}
+          
+          {mode === 'history' && session && <TransferHistory storeId={storeId} />}
         </div>
 
         {/* Right Side Columns Workspace Previews */}

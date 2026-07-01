@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Multi-stage relational unique pallet transfer with burn-on-read security
+  // CORE INTERCEPT: Multi-stage relational unique pallet transfer with burn-on-read & audit logging
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -49,7 +49,7 @@ export default function ScanPanel({
       stopCamera();
       setUiPaused(true);
 
-      // 1. HARD SECURITY CHECK: Block unsigned terminals
+      // 1. HARD SECURITY CHECK: Block unauthorised terminals
       if (!session || !storeId || !session.user?.id) {
         alert("Access Denied: You must be logged into a valid store terminal node to process stock transfers.");
         setScannedProduct(null);
@@ -130,7 +130,7 @@ export default function ScanPanel({
         if (sampleCount) sourceUserUuid = sampleCount.user_id;
       }
 
-      // If the pallet wrapper entry doesn't exist in the registry tracking index, initialize it
+      // If the pallet wrapper entry doesn't exist in the registry tracking index, initialise it
       if (!activePalletRecord) {
         let inferredOriginStore = 'INITIAL_MANIFEST_ORIGIN';
         if (sourceUserUuid) {
@@ -149,7 +149,7 @@ export default function ScanPanel({
           .single();
 
         if (insertError) {
-          alert(`Registry Initialization Failed: ${insertError.message}`);
+          alert(`Registry Initialisation Failed: ${insertError.message}`);
           setScannedProduct(null);
           setUiPaused(false);
           return;
@@ -242,27 +242,43 @@ export default function ScanPanel({
           .or(`pallet_number.eq.${targetPalletSearchNumber},pallet_number.eq.Pallet ${targetPalletSearchNumber},pallet_number.eq.${originalPalletNum}`)
           .select();
 
+        let finalItemCount = 0;
+
         if (inventoryError) {
-          alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
+          alert(`Pallet tracking registry initialised, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
         } else if (!movedRows || movedRows.length === 0) {
           const sampleList = sampleRows.map(r => `Pallet: "${r.pallet_number}" | Season: "${r.season_type}"`).join('\n');
           alert(`Match Failure (0 rows updated):\n\nYour manifest wanted Pallet "${targetPalletSearchNumber}" for "${targetSeasonSearchString}".\n\nBut here is what your database actually contains:\n${sampleList}\n\nPlease update your print configuration or input values to match.`);
         } else {
           
-          // PHASE 3: BURN THE MANIFEST
-          // Record this specific transfer ID in the database so it can never be scanned again
+          finalItemCount = movedRows.length;
+
+          // PHASE 3: BURN THE MANIFEST & WRITE AUDIT TRAIL
+          const originStoreId = activePalletRecord?.current_owner_store_id || 'UNKNOWN';
+
           const { error: burnError } = await supabase
             .from('consumed_manifests')
             .insert({ 
               manifest_id: transferId,
               consumed_by_store: storeId 
             });
+
+          const { error: auditError } = await supabase
+            .from('transfer_history')
+            .insert({
+              manifest_id: transferId,
+              season: targetSeasonSearchString,
+              pallet_name: `Pallet ${nextPalletNum}`,
+              origin_store: originStoreId,
+              destination_store: storeId,
+              items_moved: finalItemCount
+            });
             
-          if (burnError) {
-            console.error("Failed to burn manifest token:", burnError);
-            alert(`Transfer Success! (Warning: Could not permanently burn the QR code due to network error, please destroy the physical printout).`);
+          if (burnError || auditError) {
+            console.error("Audit log failure:", burnError || auditError);
+            alert(`Transfer Success! (Warning: Could not completely write to the digital audit trail due to network connection, please retain the physical printout).`);
           } else {
-            alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}. \n\nThe manifest QR code has been permanently deactivated.`);
+            alert(`Success! Securely transferred ${finalItemCount} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}. \n\nThe manifest QR code has been permanently deactivated.`);
           }
         }
       }
@@ -316,7 +332,7 @@ export default function ScanPanel({
         setIsScanning(true);
       } catch (fallbackErr) {
         console.error("Absolute camera acquisition failure across all sensors:", fallbackErr);
-        alert("Camera Initialization Failure: Please verify that rear camera usage permissions are explicitly granted.");
+        alert("Camera Initialisation Failure: Please verify that rear camera usage permissions are explicitly granted.");
       }
     }
   };
