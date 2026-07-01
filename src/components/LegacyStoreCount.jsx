@@ -21,7 +21,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-  // FEATURE 2: High-contrast audio feedback oscillators
   const playSuccessBeep = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -45,7 +44,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     }
   };
 
-  // FEATURE 2: Low-frequency error double buzzer
   const playErrorBuzzer = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -59,15 +57,14 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         
-        osc.type = 'sawtooth'; // Harsh tone for errors
-        osc.frequency.value = 150; // Low frequency buzz
+        osc.type = 'sawtooth';
+        osc.frequency.value = 150; 
         gain.gain.setValueAtTime(0.2, startTime);
         
         osc.start(startTime);
         osc.stop(startTime + duration);
       };
 
-      // Play double-buzz burst pattern
       playTone(audioCtx.currentTime, 0.12);
       playTone(audioCtx.currentTime + 0.18, 0.12);
     } catch (err) {
@@ -138,11 +135,10 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     return () => { supabase.removeChannel(channel); };
   }, [viewSeason, session]);
 
-  // Handle dynamic audio routing when product details populate
   useEffect(() => {
     if (scannedProduct) {
       if (scannedProduct.name === "Product Not Found") {
-        playErrorBuzzer(); // Instant audio warning for uncatalogued stock
+        playErrorBuzzer();
       } else {
         playSuccessBeep();
       }
@@ -207,15 +203,18 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     return () => { stopCamera(); };
   }, [mode, uiPaused]);
 
-  const handleCommitItem = async (e) => {
+  // FIXED: Destructured to cleanly check and apply immediate parameters
+  const handleCommitItem = async (e, quantityOverride = null) => {
     if (e) e.preventDefault();
-    if (!scannedProduct || scannedProduct.name === "Product Not Found" || !quantity || parseInt(quantity) <= 0) {
+    
+    const targetQuantity = quantityOverride !== null ? quantityOverride : parseInt(quantity);
+
+    if (!scannedProduct || scannedProduct.name === "Product Not Found" || !targetQuantity || targetQuantity <= 0) {
       alert("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
       return;
     }
 
     setIsSubmitting(true);
-    const targetQuantity = parseInt(quantity);
     const cleanPallet = pallet.trim();
 
     const { data: existingRecords, error: checkError } = await supabase
@@ -268,13 +267,10 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     setIsSubmitting(false);
   };
 
-  // FEATURE 1: Quick-action multiplier math handler
+  // FIXED: Bypasses local state pipeline lag completely
   const applyMultiplierAndSave = (value) => {
     setQuantity(value.toString());
-    // Use timeout to let state apply before auto-submitting onto the ledger
-    setTimeout(() => {
-      handleCommitItem();
-    }, 50);
+    handleCommitItem(null, value);
   };
 
   const handleUpdateQuantity = async (id, currentQty) => {
@@ -362,7 +358,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
               onSubmit={handleCommitItem} 
               className={`p-4 rounded-xl border-2 text-center space-y-3 ${
                 isInvalid 
-                  ? 'border-red-300 bg-red-50 text-red-900 animate-shake' 
+                  ? 'border-red-300 bg-red-50 text-red-900' 
                   : 'border-emerald-200 bg-emerald-50 text-emerald-900'
               }`}
             >
@@ -382,7 +378,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
               {!isInvalid && (
                 <>
-                  {/* FEATURE 1: Instant Case Multiplier Selection Keys */}
                   <div className="space-y-1 pt-1">
                     <span className="block text-[9px] font-black uppercase text-emerald-600 tracking-wider">⚡ Instant Case Multipliers (Log & Save)</span>
                     <div className="grid grid-cols-4 gap-1.5 max-w-xs mx-auto">
