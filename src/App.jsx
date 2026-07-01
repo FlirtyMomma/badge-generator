@@ -34,7 +34,7 @@ function App() {
   const [activePrintSeason, setActivePrintSeason] = useState('Mothers Day');
   const [activePrintPallet, setActivePrintPallet] = useState('All');
 
-  // Unified Centralized Badge States
+  // Unified Centralised Badge States
   const [staff, setStaff] = useState(() => {
     const saved = localStorage.getItem('onebeyond_staff_list');
     return saved ? JSON.parse(saved) : [];
@@ -231,7 +231,7 @@ function App() {
           
           {mode === 'admin' && session && <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} />}
           
-          {mode === 'history' && session && <TransferHistory storeId={storeId} />}
+          {mode === 'history' && session && <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} />}
         </div>
 
         {/* Right Side Columns Workspace Previews */}

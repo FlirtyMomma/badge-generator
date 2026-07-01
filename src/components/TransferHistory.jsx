@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
-export default function TransferHistory({ storeId }) {
+export default function TransferHistory({ storeId, isSystemAdmin }) {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -10,13 +10,20 @@ export default function TransferHistory({ storeId }) {
     
     const fetchHistory = async () => {
       setLoading(true);
-      // Fetch any logs where this store was either the sender or the receiver
-      const { data, error } = await supabase
+      
+      // Start building the base query
+      let query = supabase
         .from('transfer_history')
         .select('*')
-        .or(`origin_store.eq.${storeId},destination_store.eq.${storeId}`)
         .order('transferred_at', { ascending: false })
-        .limit(50);
+        .limit(100); // Increased limit for better visibility
+
+      // If the user is NOT a system admin, restrict the database view to their own store
+      if (!isSystemAdmin) {
+        query = query.or(`origin_store.eq.${storeId},destination_store.eq.${storeId}`);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         setTransfers(data);
@@ -25,7 +32,7 @@ export default function TransferHistory({ storeId }) {
     };
 
     fetchHistory();
-  }, [storeId]);
+  }, [storeId, isSystemAdmin]);
 
   if (loading) {
     return <div className="text-center p-8 text-gray-500 font-bold animate-pulse">Loading Audit Trail...</div>;
@@ -33,15 +40,24 @@ export default function TransferHistory({ storeId }) {
 
   return (
     <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-      <div className="bg-[#004aad] text-white p-4">
-        <h2 className="text-lg font-black uppercase tracking-wide">Digital Audit Trail</h2>
-        <p className="text-xs font-medium text-blue-200">Recent manifest activity for Store {storeId}</p>
+      <div className="bg-[#004aad] text-white p-4 flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-black uppercase tracking-wide">Digital Audit Trail</h2>
+          <p className="text-xs font-medium text-blue-200">
+            {isSystemAdmin ? 'Global manifest activity across all stores' : `Recent manifest activity for Store ${storeId}`}
+          </p>
+        </div>
+        {isSystemAdmin && (
+          <span className="bg-red-500 text-white px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest shadow-sm">
+            Global View
+          </span>
+        )}
       </div>
       
       {transfers.length === 0 ? (
         <div className="p-10 text-center text-gray-500">
           <p className="font-bold text-lg">No Transfer History</p>
-          <p className="text-sm mt-1">There are no recorded inbound or outbound transfers for your store yet.</p>
+          <p className="text-sm mt-1">There are no recorded inbound or outbound transfers yet.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -52,7 +68,14 @@ export default function TransferHistory({ storeId }) {
                 <th className="p-3 font-black">Direction</th>
                 <th className="p-3 font-black">Season & Pallet</th>
                 <th className="p-3 font-black">Quantity</th>
-                <th className="p-3 font-black">Other Store</th>
+                {isSystemAdmin ? (
+                  <>
+                    <th className="p-3 font-black">Origin Store</th>
+                    <th className="p-3 font-black">Destination Store</th>
+                  </>
+                ) : (
+                  <th className="p-3 font-black">Other Store</th>
+                )}
               </tr>
             </thead>
             <tbody className="text-sm">
@@ -66,20 +89,34 @@ export default function TransferHistory({ storeId }) {
                   <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="p-3 font-mono text-xs text-gray-600 whitespace-nowrap">{dateStr}</td>
                     <td className="p-3">
-                      <span className={`inline-block px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide ${
-                        isIncoming ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {isIncoming ? '⬇ Inbound' : '⬆ Outbound'}
-                      </span>
+                      {isSystemAdmin ? (
+                        <span className="inline-block px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide bg-blue-100 text-blue-800">
+                          🔄 Network Move
+                        </span>
+                      ) : (
+                        <span className={`inline-block px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide ${
+                          isIncoming ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {isIncoming ? '⬇ Inbound' : '⬆ Outbound'}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       <div className="font-bold text-gray-900">{log.season}</div>
                       <div className="text-xs text-gray-500">{log.pallet_name}</div>
                     </td>
                     <td className="p-3 font-black text-gray-800">{log.items_moved} items</td>
-                    <td className="p-3 font-medium text-gray-600">
-                      {isIncoming ? log.origin_store : log.destination_store}
-                    </td>
+                    
+                    {isSystemAdmin ? (
+                      <>
+                        <td className="p-3 font-medium text-gray-600">{log.origin_store}</td>
+                        <td className="p-3 font-medium text-gray-600">{log.destination_store}</td>
+                      </>
+                    ) : (
+                      <td className="p-3 font-medium text-gray-600">
+                        {isIncoming ? log.origin_store : log.destination_store}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
