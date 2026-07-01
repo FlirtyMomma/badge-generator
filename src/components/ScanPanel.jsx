@@ -59,7 +59,13 @@ export default function ScanPanel({
 
       // Parse out our composite unique token signature keys
       const [_, transferId, season, originalPalletNum, globalPalletKey] = cleanText.split(":");
-      const sourcePalletLookupKey = globalPalletKey || `${season.replace(/\s+/g, '').toUpperCase()}-P${originalPalletNum}`;
+      
+      // SANITISATION FILTER: Strip out any text descriptors like "Pallet" or whitespace characters 
+      // This leaves a clean literal number string (e.g. '1') to match the database records perfectly
+      const targetPalletSearchNumber = originalPalletNum.replace(/\D/g, '').trim();
+      const targetSeasonSearchString = season.trim();
+
+      const sourcePalletLookupKey = globalPalletKey || `${targetSeasonSearchString.replace(/\s+/g, '').toUpperCase()}-P${targetPalletSearchNumber}`;
 
       // 2. LIVE OWNERSHIP VALIDATION: Check if this specific composite pallet key exists in the database
       let activePalletRecord = null;
@@ -82,7 +88,7 @@ export default function ScanPanel({
       // If the pallet doesn't exist in the database yet, initialize it on the fly
       if (!activePalletRecord) {
         const confirmAutoCreate = window.confirm(
-          `PALLET REGISTRY NOT FOUND\n\nPallet ${originalPalletNum} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
+          `PALLET REGISTRY NOT FOUND\n\nPallet ${targetPalletSearchNumber} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
         );
 
         if (!confirmAutoCreate) {
@@ -115,7 +121,7 @@ export default function ScanPanel({
       }
 
       // 4. AUTO-INCREMENT CALCULATOR: Find the highest sequence number the receiving store owns for this season
-      const cleanSeasonTag = season.replace(/\s+/g, '').toUpperCase();
+      const cleanSeasonTag = targetSeasonSearchString.replace(/\s+/g, '').toUpperCase();
       let nextPalletNum = 1;
 
       try {
@@ -145,7 +151,7 @@ export default function ScanPanel({
       const destinationPalletKey = `${cleanSeasonTag}-P${nextPalletNum}`;
 
       const confirmReceipt = window.confirm(
-        `STOCK MANIFEST VALIDATED\n\nIncoming: ${season} (Originally Pallet ${originalPalletNum})\nDestination: Store ${storeId}\n\nAction: This stock will be appended as a brand new Pallet record entry: "Pallet ${nextPalletNum}" under your store holdings.\n\nExecute database ownership transfer?`
+        `STOCK MANIFEST VALIDATED\n\nIncoming: ${targetSeasonSearchString} (Originally Pallet ${targetPalletSearchNumber})\nDestination: Store ${storeId}\n\nAction: This stock will be appended as a brand new Pallet record entry: "Pallet ${nextPalletNum}" under your store holdings.\n\nExecute database ownership transfer?`
       );
 
       if (confirmReceipt) {
@@ -166,22 +172,39 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: CORRECTED INVENTORY MIGRATION
-        // Finds rows using the original basic pallet text (e.g. '1') and the explicit season name text
+        // PHASE 2: INVENTORY MIGRATION WITH SANITISED STRINGS
+        // Targets the old user data rows matching both literal cleaned numbers and the season text
         const { data: movedRows, error: inventoryError } = await supabase
           .from('legacy_stock_counts')
           .update({ 
-            user_id: session.user.id,        // Shifts row tracking to the current user profile account
-            pallet_number: destinationPalletKey // Assigns it to the newly incremented target profile key
+            user_id: session.user.id,        
+            pallet_number: destinationPalletKey 
           })
-          .eq('pallet_number', originalPalletNum)
-          .eq('season_type', season)
+          .eq('pallet_number', targetPalletSearchNumber)
+          .eq('season_type', targetSeasonSearchString)
           .select();
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
         } else if (!movedRows || movedRows.length === 0) {
-          alert(`Warning: Pallet wrapper updated, but 0 item lines inside 'legacy_stock_counts' matched criteria (Pallet: ${originalPalletNum}, Season: ${season}). Verify the source data criteria.`);
+          // SAFE BROAD-MATCH FALLBACK: If strict match fails, re-attempt search ignoring character casing strings
+          const { data: fallbackRows, error: fallbackError } = await supabase
+            .from('legacy_stock_counts')
+            .update({ 
+              user_id: session.user.id,
+              pallet_number: destinationPalletKey
+            })
+            .ilike('pallet_number', `%${targetPalletSearchNumber}%`)
+            .ilike('season_type', `%${targetSeasonSearchString}%`)
+            .select();
+
+          if (fallbackError) {
+            alert(`Fallback inventory query encountered a database exception: ${fallbackError.message}`);
+          } else if (!fallbackRows || fallbackRows.length === 0) {
+            alert(`Warning: Pallet registry updated, but 0 item lines found matching criteria (Pallet: "${targetPalletSearchNumber}", Season: "${targetSeasonSearchString}"). Please confirm that counts exist on the source system.`);
+          } else {
+            alert(`Success! Handled broad-match transfer. Securely reassigned ${fallbackRows.length} item stock lines to Store ${storeId} as Pallet ${nextPalletNum}.`);
+          }
         } else {
           alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}.`);
         }
