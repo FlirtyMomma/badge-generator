@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Multi-stage unique pallet identification & destination auto-increment transfer
+  // CORE INTERCEPT: Multi-stage relational unique pallet transfer with burn-on-read security
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -60,11 +60,35 @@ export default function ScanPanel({
       // Parse out our composite unique token signature keys
       const [_, transferId, season, originalPalletNum, globalPalletKey] = cleanText.split(":");
       
+      // 2. BURN-ON-READ VALIDATION: Ensure this QR code has never been used before
+      try {
+        const { data: consumedRecord, error: consumedError } = await supabase
+          .from('consumed_manifests')
+          .select('consumed_by_store, consumed_at')
+          .eq('manifest_id', transferId)
+          .maybeSingle();
+
+        if (consumedError) throw consumedError;
+
+        if (consumedRecord) {
+          const formattedDate = new Date(consumedRecord.consumed_at).toLocaleString('en-GB');
+          alert(`EXPIRED MANIFEST DETECTED\n\nThis QR code has already been scanned and processed by Store ${consumedRecord.consumed_by_store} on ${formattedDate}.\n\nIt can no longer be used. If this stock is moving again, a brand new manifest must be generated from the source terminal.`);
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+      } catch (err) {
+        alert(`Security Validation Error: Unable to verify manifest status. (${err.message})`);
+        setScannedProduct(null);
+        setUiPaused(false);
+        return;
+      }
+
       const targetPalletSearchNumber = originalPalletNum.replace(/\D/g, '').trim();
       const targetSeasonSearchString = season.trim();
       const sourcePalletLookupKey = globalPalletKey || `${targetSeasonSearchString.replace(/\s+/g, '').toUpperCase()}-P${targetPalletSearchNumber}`;
 
-      // 2. LIVE OWNERSHIP VALIDATION: Fetch active pallet information record
+      // 3. LIVE OWNERSHIP VALIDATION: Fetch active pallet information record
       let activePalletRecord = null;
       try {
         const { data, error: fetchError } = await supabase
@@ -133,7 +157,7 @@ export default function ScanPanel({
         activePalletRecord = newPallet;
       }
 
-      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns this configuration
+      // 4. REDUNDANCY SAFEGUARD: Block operations if your store already owns this configuration
       if (activePalletRecord.current_owner_store_id === storeId || sourceUserUuid === session.user.id) {
         alert(`Operation Cancelled: Store ${storeId} already holds the active user configuration for this seasonal stock container.`);
         setScannedProduct(null);
@@ -141,7 +165,7 @@ export default function ScanPanel({
         return;
       }
 
-      // 4. AUTO-INCREMENT CALCULATOR: Find the highest sequence number the receiving store owns for this season
+      // 5. AUTO-INCREMENT CALCULATOR: Find the highest sequence number the receiving store owns for this season
       const cleanSeasonTag = targetSeasonSearchString.replace(/\s+/g, '').toUpperCase();
       let nextPalletNum = 1;
 
@@ -176,7 +200,7 @@ export default function ScanPanel({
       );
 
       if (confirmReceipt) {
-        // 5. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet tracking container row
+        // 6. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet tracking container row
         const { error: updateError } = await supabase
           .from('store_pallets')
           .upsert({ 
@@ -207,8 +231,6 @@ export default function ScanPanel({
           return;
         }
 
-        console.log("Database Sample Formats found:", sampleRows);
-
         // Execute relational shift using multiple layout string format variables to guarantee a match lock
         const { data: movedRows, error: inventoryError } = await supabase
           .from('legacy_stock_counts')
@@ -226,7 +248,22 @@ export default function ScanPanel({
           const sampleList = sampleRows.map(r => `Pallet: "${r.pallet_number}" | Season: "${r.season_type}"`).join('\n');
           alert(`Match Failure (0 rows updated):\n\nYour manifest wanted Pallet "${targetPalletSearchNumber}" for "${targetSeasonSearchString}".\n\nBut here is what your database actually contains:\n${sampleList}\n\nPlease update your print configuration or input values to match.`);
         } else {
-          alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}.`);
+          
+          // PHASE 3: BURN THE MANIFEST
+          // Record this specific transfer ID in the database so it can never be scanned again
+          const { error: burnError } = await supabase
+            .from('consumed_manifests')
+            .insert({ 
+              manifest_id: transferId,
+              consumed_by_store: storeId 
+            });
+            
+          if (burnError) {
+            console.error("Failed to burn manifest token:", burnError);
+            alert(`Transfer Success! (Warning: Could not permanently burn the QR code due to network error, please destroy the physical printout).`);
+          } else {
+            alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}. \n\nThe manifest QR code has been permanently deactivated.`);
+          }
         }
       }
       
