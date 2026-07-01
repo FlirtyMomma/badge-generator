@@ -17,7 +17,7 @@ export default function Navigation({ mode, setMode, isSystemAdmin, session, stor
         onClick={() => setMode('priceCheck')} 
         className={`${baseBtn} ${mode === 'priceCheck' ? activeClass : inactiveClass}`}
       >
-        Scanner
+        Price Checker
       </button>
       
       {session && (
