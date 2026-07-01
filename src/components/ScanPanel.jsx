@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Validates and runs multi-stage database stock transfers
+  // CORE INTERCEPT: Multi-stage unique pallet identification & destination auto-increment transfer
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -57,75 +57,81 @@ export default function ScanPanel({
         return;
       }
 
-      const [_, transferId, season, pallet] = cleanText.split(":");
+      // Parse out our composite unique token signature keys
+      const [_, transferId, season, originalPalletNum, globalPalletKey] = cleanText.split(":");
+      const sourcePalletLookupKey = globalPalletKey || `${season.replace(/\s+/g, '').toUpperCase()}-P${originalPalletNum}`;
 
-      // 2. LIVE OWNERSHIP VALIDATION: Fetch or automatically register the pallet if it's missing
+      // 2. LIVE OWNERSHIP VALIDATION: Check if this specific composite pallet key exists in the database
       let activePalletRecord = null;
       try {
         const { data, error: fetchError } = await supabase
           .from('store_pallets')
-          .select('current_owner_store_id')
-          .eq('pallet_id', pallet)
+          .select('*')
+          .eq('pallet_id', sourcePalletLookupKey)
           .maybeSingle();
 
         if (fetchError) throw fetchError;
         activePalletRecord = data;
       } catch (err) {
-        alert(`Transfer Error: Unable to query the pallet registry database. (${err.message})`);
+        alert(`Transfer Error: Unable to query registry database. (${err.message})`);
         setScannedProduct(null);
         setUiPaused(false);
         return;
       }
 
-      // If the pallet doesn't exist in the database yet, initialize it on the fly
-      if (!activePalletRecord) {
-        const confirmAutoCreate = window.confirm(
-          `PALLET REGISTRY NOT FOUND\n\nPallet ${pallet} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
-        );
+      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns this exact season container tracking code
+      if (activePalletRecord && activePalletRecord.current_owner_store_id === storeId) {
+        alert(`Operation Cancelled: Store ${storeId} already holds the active registration for this seasonal stock container configuration.`);
+        setScannedProduct(null);
+        setUiPaused(false);
+        return;
+      }
 
-        if (!confirmAutoCreate) {
-          setScannedProduct(null);
-          setUiPaused(false);
-          return;
-        }
+      // 4. AUTO-INCREMENT CALCULATOR: Find the highest sequence number the receiving store owns for this season
+      const cleanSeasonTag = season.replace(/\s+/g, '').toUpperCase();
+      let nextPalletNum = 1;
 
-        const { data: newPallet, error: insertError } = await supabase
+      try {
+        const { data: storePalletsForSeason, error: countError } = await supabase
           .from('store_pallets')
-          .insert({ pallet_id: pallet, current_owner_store_id: 'INITIAL_MANIFEST_ORIGIN' })
-          .select('current_owner_store_id')
-          .single();
+          .select('pallet_id')
+          .eq('current_owner_store_id', storeId)
+          .like('pallet_id', `${cleanSeasonTag}-P%`);
 
-        if (insertError) {
-          alert(`Registry Initialization Failed: ${insertError.message}`);
-          setScannedProduct(null);
-          setUiPaused(false);
-          return;
+        if (countError) throw countError;
+        
+        if (storePalletsForSeason && storePalletsForSeason.length > 0) {
+          // Parse the numbers to find the true mathematical maximum index owned
+          const existingNumbers = storePalletsForSeason.map(p => {
+            const parts = p.pallet_id.split('-P');
+            return parts.length > 1 ? parseInt(parts[1], 10) : 0;
+          }).filter(num => !isNaN(num));
+
+          if (existingNumbers.length > 0) {
+            nextPalletNum = Math.max(...existingNumbers) + 1;
+          }
         }
-        activePalletRecord = newPallet;
+      } catch (err) {
+        console.warn("Failed to calculate step increments, defaulting safe index hook:", err);
+        nextPalletNum = 1;
       }
 
-      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns the pallet
-      if (activePalletRecord.current_owner_store_id === storeId) {
-        alert(`Operation Cancelled: Store ${storeId} already holds the active registration for Pallet ${pallet}. Transfer redundant.`);
-        setScannedProduct(null);
-        setUiPaused(false);
-        return;
-      }
+      const destinationPalletKey = `${cleanSeasonTag}-P${nextPalletNum}`;
 
       const confirmReceipt = window.confirm(
-        `STOCK MANIFEST VALIDATED\n\nManifest Code: ${transferId}\nAllocation: ${season} (Pallet ${pallet})\nCurrent Owner: ${activePalletRecord.current_owner_store_id}\nNew Owner Destination: ${storeId}\n\nExecute database ownership transfer query?`
+        `STOCK MANIFEST VALIDATED\n\nIncoming: ${season} (Originally Pallet ${originalPalletNum})\nDestination: Store ${storeId}\n\nAction: This stock will be appended as a brand new Pallet record entry: "Pallet ${nextPalletNum}" under your store holdings.\n\nExecute database ownership transfer?`
       );
 
       if (confirmReceipt) {
-        // 4. LIVE TRANSACTION SQL RUN - PHASE 1: Update the pallet tracking container owner
+        // 5. TRANSACTION ENGINE PHASE 1: Create the target pallet record assigned to your new destination identifier key
         const { error: updateError } = await supabase
           .from('store_pallets')
-          .update({ 
+          .upsert({ 
+            pallet_id: destinationPalletKey,
             current_owner_store_id: storeId,
             last_transferred_at: new Date().toISOString(),
             manifest_origin_code: transferId
-          })
-          .eq('pallet_id', pallet);
+          });
 
         if (updateError) {
           alert(`Database Write Rejection: ${updateError.message}`);
@@ -134,16 +140,19 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: Re-allocate the underlying individual stock balance listings to the new store code
+        // PHASE 2: Re-allocate the item records seamlessly to the newly generated destination identifier sequence code
         const { error: inventoryError } = await supabase
           .from('store_inventory')
-          .update({ store_id: storeId })
-          .eq('associated_pallet_id', pallet);
+          .update({ 
+            store_id: storeId,
+            associated_pallet_id: destinationPalletKey 
+          })
+          .eq('associated_pallet_id', sourcePalletLookupKey);
 
         if (inventoryError) {
-          alert(`Pallet header updated, but item stock profiles failed to re-allocate: ${inventoryError.message}`);
+          alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
         } else {
-          alert(`Success! Pallet ${pallet} and all associated stock lines have been securely transferred to Store ${storeId}.`);
+          alert(`Success! Stock allocation has been added to Store ${storeId} database totals as Pallet ${nextPalletNum}.`);
         }
       }
       

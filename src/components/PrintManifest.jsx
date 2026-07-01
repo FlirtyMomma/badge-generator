@@ -4,19 +4,22 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
   const [manifestId, setManifestId] = useState('');
   const [qrUrl, setQrUrl] = useState('');
 
-  useEffect(() => {
-    // 1. Generate a unique, deterministic transaction manifest code
+    useEffect(() => {
     const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const uniqueId = `TRF-${viewSeason.replace(/\s+/g, '').toUpperCase()}-${dateStamp}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Normalize the season string to strip out spaces
+    const cleanSeason = viewSeason.replace(/\s+/g, '').toUpperCase();
+    
+    // This unique tracking code will look like: TRF-MOTHERSDAY-20260701-3738
+    const uniqueId = `TRF-${cleanSeason}-${dateStamp}-${Math.floor(1000 + Math.random() * 9000)}`;
     setManifestId(uniqueId);
 
-    // 2. Encode structured cross-store routing text
-    const payload = `HUB_TRANSFER:${uniqueId}:${viewSeason}:${viewPallet}`;
+    // CRITICAL FIX: The payload now binds the unique combination key so it cannot clash
+    const globalPalletKey = `${cleanSeason}-P${viewPallet}`; 
+    const payload = `HUB_TRANSFER:${uniqueId}:${viewSeason}:${viewPallet}:${globalPalletKey}`;
     
-    // 3. Generate a 100% compliant, verified scannable vector image URL
     const encodedPayload = encodeURIComponent(payload);
     setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodedPayload}&format=svg`);
-  }, [viewSeason, viewPallet]);
+    }, [viewSeason, viewPallet]);
 
   if (!qrUrl) return null;
 
