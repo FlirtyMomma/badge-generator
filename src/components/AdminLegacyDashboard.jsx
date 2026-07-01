@@ -2,18 +2,15 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
 export default function AdminLegacyDashboard() {
-  // Aggregate Level Metrics
   const [grandTotalValue, setGrandTotalValue] = useState(0);
   const [totalItemsCount, setTotalItemsCount] = useState(0);
   const [stores, setStores] = useState([]);
 
-  // Paginated Feed Records
   const [masterList, setMasterList] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const ITEMS_PER_PAGE = 25; // Strict viewport limiter
+  const ITEMS_PER_PAGE = 25; 
 
-  // Filter States
   const [selectedStore, setSelectedStore] = useState('All');
   const [selectedSeason, setSelectedSeason] = useState('All');
   const [selectedPallet, setSelectedPallet] = useState('All');
@@ -22,23 +19,19 @@ export default function AdminLegacyDashboard() {
 
   const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-  // Whenever filters change, reset page states and query the server fresh
   useEffect(() => {
     fetchGlobalMetrics();
     fetchPaginatedRows(1, true);
   }, [selectedStore, selectedSeason, selectedPallet]);
 
-  // OPTIMIZATION 1: High-efficiency server-side aggregation loops
   const fetchGlobalMetrics = async () => {
     setLoadingMetrics(true);
     try {
-      // Base calculation payload query
       let query = supabase.from('legacy_stock_counts').select('quantity, barcode, user_id');
       
       if (selectedSeason !== 'All') query = query.eq('season_type', selectedSeason);
       if (selectedPallet !== 'All') query = query.eq('pallet_number', selectedPallet);
 
-      // If filtering by a profile text code, we look up the internal auth IDs first
       if (selectedStore !== 'All') {
         const { data: profs } = await supabase.from('store_profiles').select('id').eq('store_id', selectedStore);
         const targetIds = profs?.map(p => p.id) || [];
@@ -52,11 +45,9 @@ export default function AdminLegacyDashboard() {
         return;
       }
 
-      // Compute total aggregate quantity instantly
       const totalQty = counts.reduce((acc, item) => acc + item.quantity, 0);
       setTotalItemsCount(totalQty);
 
-      // Extract unique barcodes to pull pricing maps efficiently
       const uniqueBarcodes = [...new Set(counts.map(item => item.barcode))];
       let priceMap = {};
       if (uniqueBarcodes.length > 0) {
@@ -66,7 +57,6 @@ export default function AdminLegacyDashboard() {
         }
       }
 
-      // Compute exact corporate valuation in memory
       const totalVal = counts.reduce((acc, item) => {
         const priceStr = priceMap[item.barcode] || "£0.00";
         const parsedPrice = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
@@ -75,7 +65,6 @@ export default function AdminLegacyDashboard() {
 
       setGrandTotalValue(totalVal);
 
-      // Separately fetch all active store options for the drop-down menu
       const { data: profiles } = await supabase.from('store_profiles').select('store_id');
       if (profiles) {
         const uniqueStores = [...new Set(profiles.map(p => p.store_id))].filter(Boolean).sort();
@@ -88,7 +77,6 @@ export default function AdminLegacyDashboard() {
     }
   };
 
-  // OPTIMIZATION 2: Server-side data pagination windowing
   const fetchPaginatedRows = async (page, resetList = false) => {
     if (loadingRows) return;
     setLoadingRows(true);
@@ -101,7 +89,7 @@ export default function AdminLegacyDashboard() {
         .from('legacy_stock_counts')
         .select('id, created_at, pallet_number, barcode, product_name, quantity, season_type, user_id')
         .order('created_at', { ascending: false })
-        .range(fromRange, toRange); // Strict range limiting bounds
+        .range(fromRange, toRange); 
 
       if (selectedSeason !== 'All') query = query.eq('season_type', selectedSeason);
       if (selectedPallet !== 'All') query = query.eq('pallet_number', selectedPallet);
@@ -120,10 +108,8 @@ export default function AdminLegacyDashboard() {
         return;
       }
 
-      // Determine if there is another batch left to pull
       setHasMore(countsData.length === ITEMS_PER_PAGE);
 
-      // Fetch accompanying relational elements cleanly for this slice only
       const { data: profilesData } = await supabase.from('store_profiles').select('id, store_id, store_name');
       const profileMap = {};
       if (profilesData) profilesData.forEach(p => { profileMap[p.id] = p; });
@@ -164,24 +150,63 @@ export default function AdminLegacyDashboard() {
     }
   };
 
+  const downloadMasterCSV = () => {
+    if (masterList.length === 0) {
+      alert("No matching data rows available inside the active filter scope to extract.");
+      return;
+    }
+
+    const headers = ["Store ID", "Store Name", "Season", "Pallet Number", "Barcode", "Product Name", "Quantity", "Unit Price", "Total Value", "Logged Timestamp"];
+    const rows = masterList.map(item => [
+      `"${item.storeId}"`,
+      `"${item.storeName}"`,
+      `"${item.season_type}"`,
+      `"${item.pallet_number}"`,
+      `"${item.barcode}"`,
+      `"${item.product_name.replace(/"/g, '""')}"`, 
+      item.quantity,
+      `"${item.livePriceString}"`,
+      item.totalItemValue.toFixed(2),
+      `"${new Date(item.created_at).toLocaleString('en-GB')}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    
+    const fileTimestamp = new Date().toISOString().split('T')[0];
+    link.setAttribute("download", `OneBeyond_Master_Audit_${selectedSeason}_${fileTimestamp}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleLoadMoreClick = () => {
     fetchPaginatedRows(currentPage + 1, false);
   };
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 space-y-4 no-print">
-      
       <div className="border-b pb-2 flex justify-between items-center">
         <h2 className="text-sm font-black uppercase text-gray-700 tracking-wider">📋 Scalable Enterprise Stock Audit</h2>
-        <button 
-          onClick={() => { fetchGlobalMetrics(); fetchPaginatedRows(1, true); }} 
-          className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded font-bold border"
-        >
-          🔄 Force Sync
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={downloadMasterCSV} 
+            className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded font-bold border border-emerald-200 shadow-2xs transition-colors"
+          >
+            📥 Export CSV Spreadsheet
+          </button>
+          <button 
+            onClick={() => { fetchGlobalMetrics(); fetchPaginatedRows(1, true); }} 
+            className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded font-bold border"
+          >
+            🔄 Force Sync
+          </button>
+        </div>
       </div>
 
-      {/* Control Filters Selection Matrix */}
       <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 rounded-lg border text-xs">
         <div>
           <label className="block text-[9px] font-bold text-gray-400 mb-0.5">Filter Store</label>
@@ -203,7 +228,6 @@ export default function AdminLegacyDashboard() {
         </div>
       </div>
 
-      {/* Grand Metrics Calculations (Always shows network truth instantly) */}
       <div className="grid grid-cols-2 gap-4 bg-blue-50/40 p-4 rounded-xl border border-blue-100 text-center relative">
         {loadingMetrics && <div className="absolute inset-0 bg-white/60 flex items-center justify-center text-[10px] font-bold text-blue-600 rounded-xl">Calculating macro values...</div>}
         <div>
@@ -216,7 +240,6 @@ export default function AdminLegacyDashboard() {
         </div>
       </div>
 
-      {/* Lightweight Infinite Window List Data Grid */}
       <div className="max-h-[400px] overflow-y-auto border rounded-lg">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
@@ -246,7 +269,6 @@ export default function AdminLegacyDashboard() {
         </table>
       </div>
 
-      {/* Dynamic Pagination Loader Bar Control */}
       {hasMore && (
         <button 
           onClick={handleLoadMoreClick} 

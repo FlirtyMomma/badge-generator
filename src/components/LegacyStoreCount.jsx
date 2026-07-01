@@ -203,7 +203,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     return () => { stopCamera(); };
   }, [mode, uiPaused]);
 
-  // FIXED: Destructured to cleanly check and apply immediate parameters
   const handleCommitItem = async (e, quantityOverride = null) => {
     if (e) e.preventDefault();
     
@@ -267,7 +266,6 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
     setIsSubmitting(false);
   };
 
-  // FIXED: Bypasses local state pipeline lag completely
   const applyMultiplierAndSave = (value) => {
     setQuantity(value.toString());
     handleCommitItem(null, value);
@@ -301,7 +299,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+      <div className="grid grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100 no-print">
         <div>
           <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Scan Season</label>
           <select value={season} onChange={e => setSeason(e.target.value)} className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-700 outline-none">
@@ -314,7 +312,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         </div>
       </div>
 
-      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
+      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner no-print">
         <div id="legacy-reader" className="w-full"></div>
         
         {isScanning && !uiPaused && (
@@ -345,7 +343,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 no-print">
         <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
         <button onClick={() => { lookUpProduct(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
       </div>
@@ -356,7 +354,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           return (
             <form 
               onSubmit={handleCommitItem} 
-              className={`p-4 rounded-xl border-2 text-center space-y-3 ${
+              className={`p-4 rounded-xl border-2 text-center space-y-3 no-print ${
                 isInvalid 
                   ? 'border-red-300 bg-red-50 text-red-900' 
                   : 'border-emerald-200 bg-emerald-50 text-emerald-900'
@@ -425,7 +423,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
       )}
 
       <div className="pt-4 border-t border-gray-200">
-        <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mb-3 space-y-2.5">
+        <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 mb-3 space-y-2.5 no-print">
           <span className="block text-[10px] font-black uppercase text-gray-500 tracking-wider">🔍 Audit Viewer Filters</span>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -450,7 +448,7 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           </div>
         </div>
 
-        <div className="space-y-1 bg-white p-3 rounded-xl border border-gray-200 mb-3 shadow-xs">
+        <div className="space-y-1 bg-white p-3 rounded-xl border border-gray-200 mb-3 shadow-xs no-print">
           <div className="flex justify-between items-center text-xs">
             <span className="font-bold text-gray-500 uppercase">Season Total Value:</span>
             <span className="font-black text-[#004aad] text-sm">£{grandSeasonValue.toFixed(2)}</span>
@@ -463,12 +461,70 @@ export default function LegacyStoreCount({ mode, session, lookUpProduct, scanned
           )}
         </div>
 
-        <div className="flex justify-between items-center mb-2 px-1">
+        {/* PRINT TRIGGER BUTTON */}
+        {viewPallet !== 'All' && filteredDisplayList.length > 0 && (
+          <button 
+            onClick={() => window.print()} 
+            className="w-full bg-gray-900 hover:bg-black text-white text-xs font-black uppercase py-2 rounded-lg shadow-sm tracking-wider mb-4 transition-colors flex items-center justify-center gap-2 no-print"
+          >
+            🖨️ Print Pallet #{viewPallet} Manifest Label
+          </button>
+        )}
+
+        {/* PRINT-ONLY PHYSICAL LABEL LAYOUT */}
+        <div className="hidden print:block p-4 font-sans text-black bg-white w-full max-w-2xl mx-auto">
+          <div className="border-4 border-black p-6 space-y-4 rounded-lg">
+            <div className="border-b-4 border-black pb-4 text-center">
+              <h1 className="text-3xl font-black uppercase tracking-tight">ONEBEYOND AUDIT MANIFEST</h1>
+              <div className="grid grid-cols-2 text-sm font-bold mt-2 uppercase tracking-wide">
+                <div className="text-left">Store Node: <span className="underline">{session?.user?.email?.split('@')[0].toUpperCase()}</span></div>
+                <div className="text-right">Generated: <span className="underline">{new Date().toLocaleDateString('en-GB')}</span></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 border-b-4 border-black pb-4 text-center items-center">
+              <div className="border-r-2 border-black py-2">
+                <span className="block text-xs font-black uppercase text-gray-500">AUDIT TARGET ZONE</span>
+                <span className="text-xl font-black uppercase">{viewSeason}</span>
+              </div>
+              <div className="py-2">
+                <span className="block text-xs font-black uppercase text-gray-500">CONTAINER LOG ELEMENT</span>
+                <span className="text-3xl font-black">PALLET #{viewPallet}</span>
+              </div>
+            </div>
+
+            <table className="w-full text-left text-xs border-collapse mt-4">
+              <thead>
+                <tr className="border-b-2 border-black font-black uppercase text-[10px]">
+                  <th className="py-1">Barcode Index</th>
+                  <th className="py-1">Product SKU Description</th>
+                  <th className="py-1 text-right">Qty</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y border-b-2 border-black font-medium">
+                {filteredDisplayList.map(item => (
+                  <tr key={item.id} className="py-1">
+                    <td className="font-mono font-bold py-1.5">{item.barcode}</td>
+                    <td className="uppercase font-semibold truncate max-w-[220px] py-1.5">{item.product_name}</td>
+                    <td className="text-right font-black text-sm py-1.5">x{item.quantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="flex justify-between items-center pt-2 text-sm font-black uppercase">
+              <span>Total Units Counted: {filteredDisplayList.reduce((acc, item) => acc + item.quantity, 0)}</span>
+              <span className="text-base">Est Valuation: £{filteredPalletValue.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center mb-2 px-1 no-print">
           <h3 className="text-xs font-black uppercase text-gray-500 tracking-wider">Logged Items ({filteredDisplayList.length})</h3>
           <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-0.5 rounded-sm font-bold">Items: {filteredDisplayList.reduce((acc, item) => acc + item.quantity, 0)}</span>
         </div>
 
-        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 no-print">
           {filteredDisplayList.length === 0 ? (
             <p className="text-center text-xs text-gray-400 py-6 italic bg-white rounded-lg border border-dashed">No product entries logged.</p>
           ) : (
