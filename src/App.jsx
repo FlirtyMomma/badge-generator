@@ -191,8 +191,18 @@ function App() {
 
       {/* 1. GLOBAL HEADER CARD - NEVER MOVES */}
       <div className="w-full max-w-7xl bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
-        <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
-          <span className="text-[#004aad]">One</span>Beyond Store Hub
+        <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center tracking-tight">
+          
+
+        {/* Header */}
+        <div className="bg-[#004aad] text-white pt-2 pb-3 px-4 text-center">
+          <div className="flex justify-center items-center">
+            <span className="text-[28px] font-black tracking-tighter text-[#ffcb05]">One</span>
+            <span className="text-[28px] font-black tracking-tighter text-white">Beyond</span>
+          </div>
+        </div>
+
+
         </h1>
         <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
       </div>
@@ -209,7 +219,7 @@ function App() {
           {mode === 'login' && !session && (
             <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
               <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
-              <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="store01@onebeyond.com" required />
+              <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="coalville.155@onebeyond.co.uk" required />
               <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="Store Password" required />
               <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md">Sign In</button>
             </form>
