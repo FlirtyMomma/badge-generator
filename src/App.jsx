@@ -190,15 +190,16 @@ function App() {
       )}
 
       {/* 1. GLOBAL HEADER CARD - NEVER MOVES */}
-      <div className="w-full max-w-7xl bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
+      <div className="w-full max-w-7xl bg-[#004aad] p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
         <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center tracking-tight">
           
 
         {/* Header */}
         <div className="bg-[#004aad] text-white pt-2 pb-3 px-4 text-center">
           <div className="flex justify-center items-center">
-            <span className="text-[28px] font-black tracking-tighter text-[#ffcb05]">One</span>
-            <span className="text-[28px] font-black tracking-tighter text-white">Beyond</span>
+            <span className="text-[40px] font-black tracking-tighter text-[#ffcb05]">One</span>
+            <span className="text-[40px] font-black tracking-tighter text-white">Beyond Store Hub</span>
+            
           </div>
         </div>
 
