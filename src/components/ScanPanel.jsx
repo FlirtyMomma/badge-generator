@@ -166,21 +166,24 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: Re-allocate item lines inside public.legacy_stock_counts
-        // Targets original user data rows matching literal pallet input numbers and the season text
-        const { error: inventoryError } = await supabase
+        // PHASE 2: CORRECTED INVENTORY MIGRATION
+        // Finds rows using the original basic pallet text (e.g. '1') and the explicit season name text
+        const { data: movedRows, error: inventoryError } = await supabase
           .from('legacy_stock_counts')
           .update({ 
             user_id: session.user.id,        // Shifts row tracking to the current user profile account
             pallet_number: destinationPalletKey // Assigns it to the newly incremented target profile key
           })
           .eq('pallet_number', originalPalletNum)
-          .eq('season_type', season);
+          .eq('season_type', season)
+          .select();
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
+        } else if (!movedRows || movedRows.length === 0) {
+          alert(`Warning: Pallet wrapper updated, but 0 item lines inside 'legacy_stock_counts' matched criteria (Pallet: ${originalPalletNum}, Season: ${season}). Verify the source data criteria.`);
         } else {
-          alert(`Success! Stock allocation has been added to Store ${storeId} database totals as Pallet ${nextPalletNum}.`);
+          alert(`Success! Securely transferred ${movedRows.length} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}.`);
         }
       }
       
