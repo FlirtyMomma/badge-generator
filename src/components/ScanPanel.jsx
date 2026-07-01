@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { supabase } from '../supabaseClient'; // Imported to run live backend queries
+import { supabase } from '../supabaseClient';
 import SavedBatchList from './SavedBatchList';
 
 export default function ScanPanel({ 
@@ -11,8 +11,8 @@ export default function ScanPanel({
   setActiveZoomBarcode, 
   savedProducts, 
   setSavedProducts,
-  session,  // CONNECTED: Root store login session tracking
-  storeId   // CONNECTED: Active tracking identifier for current location
+  session,  
+  storeId   
 }) {
   const [manualBarcode, setManualBarcode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Validates and runs live stock transfer queries
+  // CORE INTERCEPT: Validates and runs live stock transfer queries with auto-provisioning
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -59,18 +59,50 @@ export default function ScanPanel({
 
       const [_, transferId, season, pallet] = cleanText.split(":");
 
-      // 2. HARD OWNERSHIP VALIDATION: Fetch the pallet's current real-time owner from Supabase
-      const { data: activePalletRecord, error: fetchError } = await supabase
-        .from('store_pallets')
-        .select('current_owner_store_id')
-        .eq('pallet_id', pallet)
-        .single();
+      // 2. LIVE OWNERSHIP VALIDATION: Fetch or automatically register the pallet if it's missing
+      let activePalletRecord = null;
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('store_pallets')
+          .select('current_owner_store_id')
+          .eq('pallet_id', pallet)
+          .maybeSingle(); // Refined from .single() so missing rows don't cause hard exceptions
 
-      if (fetchError || !activePalletRecord) {
-        alert("Transfer Error: Unable to locate a valid pallet registry matching this manifest signature.");
+        if (fetchError) throw fetchError;
+        activePalletRecord = data;
+      } catch (err) {
+        alert(`Transfer Error: Unable to query the pallet registry database. (${err.message})`);
         setScannedProduct(null);
         setUiPaused(false);
         return;
+      }
+
+      // If the pallet doesn't exist in the database yet, initialize it on the fly
+      if (!activePalletRecord) {
+        const confirmAutoCreate = window.confirm(
+          `PALLET REGISTRY NOT FOUND\n\nPallet ${pallet} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
+        );
+
+        if (!confirmAutoCreate) {
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+
+        // Set initial owner as a placeholder or inferred origin, which will then immediately be transferred
+        const { data: newPallet, error: insertError } = await supabase
+          .from('store_pallets')
+          .insert({ pallet_id: pallet, current_owner_store_id: 'INITIAL_MANIFEST_ORIGIN' })
+          .select('current_owner_store_id')
+          .single();
+
+        if (insertError) {
+          alert(`Registry Initialization Failed: ${insertError.message}`);
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+        activePalletRecord = newPallet;
       }
 
       // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns the pallet
