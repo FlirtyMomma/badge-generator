@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Validates and runs live stock transfer queries with auto-provisioning
+  // CORE INTERCEPT: Validates and runs multi-stage database stock transfers
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -66,7 +66,7 @@ export default function ScanPanel({
           .from('store_pallets')
           .select('current_owner_store_id')
           .eq('pallet_id', pallet)
-          .maybeSingle(); // Refined from .single() so missing rows don't cause hard exceptions
+          .maybeSingle();
 
         if (fetchError) throw fetchError;
         activePalletRecord = data;
@@ -89,7 +89,6 @@ export default function ScanPanel({
           return;
         }
 
-        // Set initial owner as a placeholder or inferred origin, which will then immediately be transferred
         const { data: newPallet, error: insertError } = await supabase
           .from('store_pallets')
           .insert({ pallet_id: pallet, current_owner_store_id: 'INITIAL_MANIFEST_ORIGIN' })
@@ -118,7 +117,7 @@ export default function ScanPanel({
       );
 
       if (confirmReceipt) {
-        // 4. LIVE TRANSACTION SQL RUN: Update the record row properties to credit your current store location
+        // 4. LIVE TRANSACTION SQL RUN - PHASE 1: Update the pallet tracking container owner
         const { error: updateError } = await supabase
           .from('store_pallets')
           .update({ 
@@ -130,8 +129,21 @@ export default function ScanPanel({
 
         if (updateError) {
           alert(`Database Write Rejection: ${updateError.message}`);
+          setScannedProduct(null);
+          setUiPaused(false);
+          return;
+        }
+
+        // PHASE 2: Re-allocate the underlying individual stock balance listings to the new store code
+        const { error: inventoryError } = await supabase
+          .from('store_inventory')
+          .update({ store_id: storeId })
+          .eq('associated_pallet_id', pallet);
+
+        if (inventoryError) {
+          alert(`Pallet header updated, but item stock profiles failed to re-allocate: ${inventoryError.message}`);
         } else {
-          alert(`Success! Pallet ${pallet} has been transferred to Store ${storeId} in the database.`);
+          alert(`Success! Pallet ${pallet} and all associated stock lines have been securely transferred to Store ${storeId}.`);
         }
       }
       
