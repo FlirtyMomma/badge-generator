@@ -1,36 +1,37 @@
 import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { supabase } from '../supabaseClient'; // Imported to run live backend queries
 import SavedBatchList from './SavedBatchList';
 
-export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScannedProduct, setActiveZoomBarcode, savedProducts, setSavedProducts }) {
+export default function ScanPanel({ 
+  mode, 
+  lookUpProduct, 
+  scannedProduct, 
+  setScannedProduct, 
+  setActiveZoomBarcode, 
+  savedProducts, 
+  setSavedProducts,
+  session,  // CONNECTED: Root store login session tracking
+  storeId   // CONNECTED: Active tracking identifier for current location
+}) {
   const [manualBarcode, setManualBarcode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [uiPaused, setUiPaused] = useState(false);
   const html5QrcodeRef = useRef(null);
 
-  // --- AUDIO FEEDBACK FUNCTION ---
   const playSuccessBeep = () => {
     try {
-      // 1. Fire a sharp 100-millisecond physical hardware vibration pulse
-      if (navigator.vibrate) {
-        navigator.vibrate(100);
-      }
-
-      // 2. Play the piercing square-wave audio tone
+      if (navigator.vibrate) navigator.vibrate(100);
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
-      
       const audioCtx = new AudioContext();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
-
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
-
       oscillator.type = 'square';
       oscillator.frequency.value = 1050; 
       gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
-
       oscillator.start();
       oscillator.stop(audioCtx.currentTime + 0.08); 
     } catch (err) {
@@ -38,7 +39,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
     }
   };
 
-  // CORE INTERCEPT: Decodes inter-store stock transfers or falls through to standard retail product scan
+  // CORE INTERCEPT: Validates and runs live stock transfer queries
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -48,31 +49,73 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       stopCamera();
       setUiPaused(true);
 
+      // 1. HARD SECURITY CHECK: Block unsigned terminals from executing modifications
+      if (!session || !storeId) {
+        alert("Access Denied: You must be logged into a valid store terminal node to process stock transfers.");
+        setScannedProduct(null);
+        setUiPaused(false);
+        return;
+      }
+
       const [_, transferId, season, pallet] = cleanText.split(":");
+
+      // 2. HARD OWNERSHIP VALIDATION: Fetch the pallet's current real-time owner from Supabase
+      const { data: activePalletRecord, error: fetchError } = await supabase
+        .from('store_pallets')
+        .select('current_owner_store_id')
+        .eq('pallet_id', pallet)
+        .single();
+
+      if (fetchError || !activePalletRecord) {
+        alert("Transfer Error: Unable to locate a valid pallet registry matching this manifest signature.");
+        setScannedProduct(null);
+        setUiPaused(false);
+        return;
+      }
+
+      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns the pallet
+      if (activePalletRecord.current_owner_store_id === storeId) {
+        alert(`Operation Cancelled: Store ${storeId} already holds the active registration for Pallet ${pallet}. Transfer redundant.`);
+        setScannedProduct(null);
+        setUiPaused(false);
+        return;
+      }
+
       const confirmReceipt = window.confirm(
-        `STOCK MANIFEST DETECTED!\n\nManifest Code: ${transferId}\nAllocation: ${season} (${pallet})\n\nWould you like to instantly transfer and credit these allocations into your active store inventory database?`
+        `STOCK MANIFEST VALIDATED\n\nManifest Code: ${transferId}\nAllocation: ${season} (Pallet ${pallet})\nCurrent Owner: ${activePalletRecord.current_owner_store_id}\nNew Owner Destination: ${storeId}\n\nExecute database ownership transfer query?`
       );
 
       if (confirmReceipt) {
-        alert(`Success! Manifest ${transferId} has been securely processed. All stock quantities are instantly booked into your local store balances.`);
+        // 4. LIVE TRANSACTION SQL RUN: Update the record row properties to credit your current store location
+        const { error: updateError } = await supabase
+          .from('store_pallets')
+          .update({ 
+            current_owner_store_id: storeId,
+            last_transferred_at: new Date().toISOString(),
+            manifest_origin_code: transferId
+          })
+          .eq('pallet_id', pallet);
+
+        if (updateError) {
+          alert(`Database Write Rejection: ${updateError.message}`);
+        } else {
+          alert(`Success! Pallet ${pallet} has been transferred to Store ${storeId} in the database.`);
+        }
       }
+      
       setScannedProduct(null);
       setUiPaused(false);
       return;
     }
 
-    // Default legacy path for standard items
     lookUpProduct(cleanText);
   };
 
   const startCamera = async () => {
     try {
-      if (!html5QrcodeRef.current) {
-        html5QrcodeRef.current = new Html5Qrcode("reader");
-      }
+      if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("reader");
       if (html5QrcodeRef.current.isScanning) return;
 
-      // STRICT ENVIRONMENT CONSTRAINT: Enforces a hard hardware lock on the primary rear wide lens
       const scanConfig = {
         fps: 20, 
         qrbox: { width: 260, height: 160 },
@@ -90,26 +133,14 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         handleScannedDataValidation(text);
       };
 
-      // Attempt to launch using strict back-camera properties
-      await html5QrcodeRef.current.start(
-        { facingMode: { exact: "environment" } }, 
-        scanConfig, 
-        onScanSuccess, 
-        () => {}
-      );
-
+      await html5QrcodeRef.current.start({ facingMode: { exact: "environment" } }, scanConfig, onScanSuccess, () => {});
       setIsScanning(true);
     } catch (err) {
       console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
-      
-      // FALLBACK COUPLING: Drops back to a standard environmental hook if exact mode is blocked by the OS driver
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },
-          {
-            fps: 15,
-            qrbox: { width: 260, height: 160 }
-          },
+          { fps: 15, qrbox: { width: 260, height: 160 } },
           (text) => {
             playSuccessBeep();
             stopCamera();
@@ -121,7 +152,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         setIsScanning(true);
       } catch (fallbackErr) {
         console.error("Absolute camera acquisition failure across all sensors:", fallbackErr);
-        alert("Camera Initialization Failure: Please verify that rear camera usage permissions are explicitly granted within your mobile web browser privacy console.");
+        alert("Camera Initialization Failure: Please verify that rear camera usage permissions are explicitly granted.");
       }
     }
   };
@@ -159,10 +190,8 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
 
   return (
     <div className="space-y-4">
-      {/* Camera layout block */}
       <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
         <div id="reader" className="w-full"></div>
-        
         {isScanning && !uiPaused && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
             <button onClick={stopCamera} className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md">
@@ -170,18 +199,13 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
             </button>
           </div>
         )}
-
         {uiPaused && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-xs z-20">
-            <button 
-              onClick={() => { setScannedProduct(null); setUiPaused(false); }} 
-              className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all border border-white/20"
-            >
+            <button onClick={() => { setScannedProduct(null); setUiPaused(false); }} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all border border-white/20">
               📷 Scan Next Item
             </button>
           </div>
         )}
-
         {!isScanning && !uiPaused && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
             <button onClick={startCamera} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-md hover:bg-blue-800">
@@ -191,21 +215,9 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
         )}
       </div>
 
-      {/* Manual Input Entry Form layout */}
       <div className="flex gap-2">
-        <input 
-          type="text" 
-          className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500 text-gray-800 bg-white" 
-          placeholder="Scan or Type Barcode" 
-          value={manualBarcode} 
-          onChange={(e) => setManualBarcode(e.target.value)} 
-        />
-        <button 
-          onClick={() => { handleScannedDataValidation(manualBarcode); setManualBarcode(''); }} 
-          className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800"
-        >
-          Find
-        </button>
+        <input type="text" className="flex-grow border px-3 py-2 rounded-lg font-mono text-sm outline-none focus:border-blue-500 text-gray-800 bg-white" placeholder="Scan or Type Barcode" value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} />
+        <button onClick={() => { handleScannedDataValidation(manualBarcode); setManualBarcode(''); }} className="bg-[#004aad] text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-blue-800">Find</button>
       </div>
 
       {scannedProduct && (
@@ -225,11 +237,7 @@ export default function ScanPanel({ mode, lookUpProduct, scannedProduct, setScan
       )}
 
       <div className="xl:hidden">
-        <SavedBatchList 
-          savedProducts={savedProducts} 
-          setSavedProducts={setSavedProducts} 
-          setActiveZoomBarcode={setActiveZoomBarcode} 
-        />
+        <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
       </div>
     </div>
   );

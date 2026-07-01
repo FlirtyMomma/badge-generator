@@ -209,7 +209,17 @@ function App() {
           )}
 
           {mode === 'priceCheck' && (
-            <ScanPanel mode={mode} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActiveZoomBarcode={setActiveZoomBarcode} savedProducts={savedProducts} setSavedProducts={setSavedProducts} />
+            <ScanPanel 
+              mode={mode} 
+              lookUpProduct={lookUpProduct} 
+              scannedProduct={scannedProduct} 
+              setScannedProduct={setScannedProduct} 
+              setActiveZoomBarcode={setActiveZoomBarcode} 
+              savedProducts={savedProducts} 
+              setSavedProducts={setSavedProducts}
+              session={session} // PASSED DOWN
+              storeId={storeId} // PASSED DOWN
+            />
           )}
           {mode === 'legacy' && session && (
             <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActivePrintSeason={setActivePrintSeason} setActivePrintPallet={setActivePrintPallet} />
