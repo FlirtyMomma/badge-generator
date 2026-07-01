@@ -17,6 +17,7 @@ export default function ScanPanel({
   const [manualBarcode, setManualBarcode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [uiPaused, setUiPaused] = useState(false);
+  const [cameraError, setCameraError] = useState(false);
   const html5QrcodeRef = useRef(null);
 
   const playSuccessBeep = () => {
@@ -292,6 +293,7 @@ export default function ScanPanel({
   };
 
   const startCamera = async () => {
+    setCameraError(false); // Reset error state before attempting to launch
     try {
       if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("reader");
       if (html5QrcodeRef.current.isScanning) return;
@@ -331,8 +333,9 @@ export default function ScanPanel({
         );
         setIsScanning(true);
       } catch (fallbackErr) {
-        console.error("Absolute camera acquisition failure across all sensors:", fallbackErr);
-        alert("Camera Initialisation Failure: Please verify that rear camera usage permissions are explicitly granted.");
+        // Silently catch the error and update the UI state instead of firing an alert
+        console.error("Camera acquisition failure:", fallbackErr);
+        setCameraError(true);
       }
     }
   };
@@ -370,8 +373,9 @@ export default function ScanPanel({
 
   return (
     <div className="space-y-4">
-      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner">
-        <div id="reader" className="w-full"></div>
+      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner min-h-[250px] flex items-center justify-center">
+        <div id="reader" className="w-full absolute inset-0"></div>
+        
         {isScanning && !uiPaused && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
             <button onClick={stopCamera} className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md">
@@ -379,6 +383,7 @@ export default function ScanPanel({
             </button>
           </div>
         )}
+        
         {uiPaused && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-xs z-20">
             <button onClick={() => { setScannedProduct(null); setUiPaused(false); }} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all border border-white/20">
@@ -386,7 +391,19 @@ export default function ScanPanel({
             </button>
           </div>
         )}
-        {!isScanning && !uiPaused && (
+
+        {/* The new silent error state for PC users without a camera */}
+        {cameraError && !uiPaused && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
+            <p className="text-red-400 font-bold text-[11px] uppercase tracking-wider mb-2">📸 Camera Not Detected</p>
+            <p className="text-gray-500 text-[10px] mb-3">Please use the manual entry field below.</p>
+            <button onClick={startCamera} className="bg-gray-800 text-gray-300 px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase hover:bg-gray-700 transition-colors">
+              Retry Camera
+            </button>
+          </div>
+        )}
+
+        {!isScanning && !uiPaused && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
             <button onClick={startCamera} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-md hover:bg-blue-800">
               🎥 Start Scanner

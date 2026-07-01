@@ -14,8 +14,8 @@ import TransferHistory from './components/TransferHistory';
 
 function App() {
   const [mode, setMode] = useState(() => {
-    const saved = localStorage.getItem('onebeyond_active_tab') || 'badges';
-    return (saved === 'legacy' || saved === 'login') ? 'badges' : saved;
+    const saved = localStorage.getItem('onebeyond_active_tab') || 'priceCheck';
+    return (saved === 'login') ? 'priceCheck' : saved;
   });
   
   const [scannedProduct, setScannedProduct] = useState(null);
@@ -34,7 +34,6 @@ function App() {
   const [activePrintSeason, setActivePrintSeason] = useState('Mothers Day');
   const [activePrintPallet, setActivePrintPallet] = useState('All');
 
-  // Unified Centralised Badge States
   const [staff, setStaff] = useState(() => {
     const saved = localStorage.getItem('onebeyond_staff_list');
     return saved ? JSON.parse(saved) : [];
@@ -50,6 +49,12 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
+  useEffect(() => {
+    if (!session && ['badges', 'legacy', 'stockTake', 'history', 'admin'].includes(mode)) {
+      setMode('priceCheck');
+    }
+  }, [session, mode]);
+
   const handleLogoutStore = async () => {
     try {
       await supabase.auth.signOut();
@@ -62,7 +67,7 @@ function App() {
     setEmailInput('');
     setPasswordInput('');
     setIsLoggingIn(false);
-    setMode('badges'); 
+    setMode('priceCheck'); 
   };
 
   useEffect(() => {
@@ -121,7 +126,6 @@ function App() {
     if (data) {
       setStoreId(data.store_id);
       setIsSystemAdmin(!!data.is_admin);
-      setMode('legacy');
     }
   };
 
@@ -140,6 +144,7 @@ function App() {
     } else if (data?.session) {
       setSession(data.session);
       fetchStoreProfile(data.session.user.id);
+      setMode('legacy'); 
     }
     setIsLoggingIn(false);
   };
@@ -167,26 +172,29 @@ function App() {
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
       
       {session && storeId && (
-        <div className={`w-full flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print ${isDataDenseView ? 'max-w-7xl' : 'max-w-md xl:max-w-6xl'}`}>
+        <div className="w-full max-w-7xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
           <span>🏪 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
           <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
         </div>
       )}
 
+      {/* 1. GLOBAL HEADER CARD - NEVER MOVES */}
+      <div className="w-full max-w-7xl bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
+        <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
+          <span className="text-[#004aad]">One</span>Beyond Store Hub
+        </h1>
+        <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
+      </div>
+
+      {/* 2. DYNAMIC CONTENT AREA */}
       <div className={`w-full transition-all duration-300 ${
         isDataDenseView 
           ? 'max-w-7xl grid grid-cols-1 gap-6' 
-          : 'max-w-md xl:max-w-6xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start' 
+          : 'max-w-md xl:max-w-7xl xl:grid xl:grid-cols-[400px_1fr] xl:gap-8 items-start' 
       }`}>
         
-        {/* Left Side Form View */}
+        {/* Left/Main Column Form View */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 no-print w-full mb-6 xl:mb-0">
-          <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center uppercase tracking-tight">
-            <span className="text-[#004aad]">One</span>Beyond Store Hub
-          </h1>
-          
-          <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
-
           {mode === 'login' && !session && (
             <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
               <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
@@ -196,7 +204,7 @@ function App() {
             </form>
           )}
 
-          {mode === 'badges' && (
+          {mode === 'badges' && session && (
             <BadgeBuilder 
               contentRef={contentRef} 
               layoutMode="leftColumn" 
@@ -234,10 +242,10 @@ function App() {
           {mode === 'history' && session && <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} />}
         </div>
 
-        {/* Right Side Columns Workspace Previews */}
+        {/* Right Side Column (Previews & Layouts) */}
         {!isDataDenseView && (
           <div className="hidden xl:block w-full no-print">
-            {mode === 'badges' && (
+            {mode === 'badges' && session && (
               <BadgeBuilder 
                 contentRef={contentRef} 
                 layoutMode="rightColumn" 
