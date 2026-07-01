@@ -39,7 +39,7 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Multi-stage unique pallet identification & destination auto-increment transfer
+  // CORE INTERCEPT: Multi-stage relational unique pallet transfer
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -49,7 +49,7 @@ export default function ScanPanel({
       stopCamera();
       setUiPaused(true);
 
-      // 1. HARD SECURITY CHECK: Block unsigned terminals from executing modifications
+      // 1. HARD SECURITY CHECK: Block unsigned terminals
       if (!session || !storeId || !session.user?.id) {
         alert("Access Denied: You must be logged into a valid store terminal node to process stock transfers.");
         setScannedProduct(null);
@@ -60,14 +60,11 @@ export default function ScanPanel({
       // Parse out our composite unique token signature keys
       const [_, transferId, season, originalPalletNum, globalPalletKey] = cleanText.split(":");
       
-      // SANITISATION FILTER: Strip out any text descriptors like "Pallet" or whitespace characters 
-      // This leaves a clean literal number string (e.g. '1') to match the database records perfectly
       const targetPalletSearchNumber = originalPalletNum.replace(/\D/g, '').trim();
       const targetSeasonSearchString = season.trim();
-
       const sourcePalletLookupKey = globalPalletKey || `${targetSeasonSearchString.replace(/\s+/g, '').toUpperCase()}-P${targetPalletSearchNumber}`;
 
-      // 2. LIVE OWNERSHIP VALIDATION: Check if this specific composite pallet key exists in the database
+      // 2. LIVE OWNERSHIP VALIDATION: Fetch active pallet information record
       let activePalletRecord = null;
       try {
         const { data, error: fetchError } = await supabase
@@ -85,21 +82,46 @@ export default function ScanPanel({
         return;
       }
 
-      // If the pallet doesn't exist in the database yet, initialize it on the fly
-      if (!activePalletRecord) {
-        const confirmAutoCreate = window.confirm(
-          `PALLET REGISTRY NOT FOUND\n\nPallet ${targetPalletSearchNumber} is not registered in the database yet.\n\nWould you like to auto-initialize this record entry now?`
-        );
+      // If the master tracking pallet doesn't exist yet, look up who has those items counted right now
+      let sourceUserUuid = null;
+      if (activePalletRecord) {
+        // Find the user UUID associated with the old store that owns this pallet wrapper row
+        const { data: oldProfile } = await supabase
+          .from('store_profiles')
+          .select('id')
+          .eq('store_id', activePalletRecord.current_owner_store_id)
+          .maybeSingle();
+        if (oldProfile) sourceUserUuid = oldProfile.id;
+      }
 
-        if (!confirmAutoCreate) {
-          setScannedProduct(null);
-          setUiPaused(false);
-          return;
+      // Fallback: If no wrapper exists yet, query the items directly to see who counted them
+      if (!sourceUserUuid) {
+        const { data: sampleCount } = await supabase
+          .from('legacy_stock_counts')
+          .select('user_id')
+          .eq('pallet_number', targetPalletSearchNumber)
+          .eq('season_type', targetSeasonSearchString)
+          .limit(1)
+          .maybeSingle();
+        
+        if (sampleCount) sourceUserUuid = sampleCount.user_id;
+      }
+
+      // If the pallet wrapper entry doesn't exist in the registry tracking index, initialize it
+      if (!activePalletRecord) {
+        let inferredOriginStore = 'INITIAL_MANIFEST_ORIGIN';
+        if (sourceUserUuid) {
+          const { data: profileLookup } = await supabase
+            .from('store_profiles')
+            .select('store_id')
+            .eq('id', sourceUserUuid)
+            .maybeSingle();
+          if (profileLookup) inferredOriginStore = profileLookup.store_id;
         }
 
         const { data: newPallet, error: insertError } = await supabase
           .from('store_pallets')
-          .insert({ pallet_id: sourcePalletLookupKey, current_owner_store_id: 'INITIAL_MANIFEST_ORIGIN' })
+          .insert({ pallet_id: sourcePalletLookupKey, current_owner_store_id: inferredOriginStore })
           .select('current_owner_store_id')
           .single();
 
@@ -112,9 +134,9 @@ export default function ScanPanel({
         activePalletRecord = newPallet;
       }
 
-      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns this exact season container tracking code
-      if (activePalletRecord.current_owner_store_id === storeId) {
-        alert(`Operation Cancelled: Store ${storeId} already holds the active registration for this seasonal stock container configuration.`);
+      // 3. REDUNDANCY SAFEGUARD: Block operations if your store already owns this configuration
+      if (activePalletRecord.current_owner_store_id === storeId || sourceUserUuid === session.user.id) {
+        alert(`Operation Cancelled: Store ${storeId} already holds the active user configuration for this seasonal stock container.`);
         setScannedProduct(null);
         setUiPaused(false);
         return;
@@ -155,7 +177,7 @@ export default function ScanPanel({
       );
 
       if (confirmReceipt) {
-        // 5. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet container row
+        // 5. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet tracking container row
         const { error: updateError } = await supabase
           .from('store_pallets')
           .upsert({ 
@@ -172,22 +194,27 @@ export default function ScanPanel({
           return;
         }
 
-        // PHASE 2: INVENTORY MIGRATION WITH SANITISED STRINGS
-        // Targets the old user data rows matching both literal cleaned numbers and the season text
-        const { data: movedRows, error: inventoryError } = await supabase
-          .from('legacy_stock_counts')
-          .update({ 
-            user_id: session.user.id,        
-            pallet_number: destinationPalletKey 
-          })
-          .eq('pallet_number', targetPalletSearchNumber)
-          .eq('season_type', targetSeasonSearchString)
-          .select();
+        // PHASE 2: RELATIONAL INVENTORY MIGRATION
+        // Target rows filtering specifically by the source user UUID (who owned it) to ensure exact record reassignment
+        let query = supabase.from('legacy_stock_counts').update({ 
+          user_id: session.user.id,        // Changes database ownership to the current user's authenticated terminal account
+          pallet_number: destinationPalletKey // Assigns it to the new incremental layout key
+        });
+
+        if (sourceUserUuid) {
+          // Strict Match path: Lock onto the specific source user account and literal old label number
+          query = query.eq('user_id', sourceUserUuid).eq('pallet_number', targetPalletSearchNumber);
+        } else {
+          // Broad Fallback path: If user data was missing, match across generic rows for that simple code configuration
+          query = query.eq('pallet_number', targetPalletSearchNumber);
+        }
+
+        const { data: movedRows, error: inventoryError } = await query.eq('season_type', targetSeasonSearchString).select();
 
         if (inventoryError) {
           alert(`Pallet tracking registry initialized, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
         } else if (!movedRows || movedRows.length === 0) {
-          // SAFE BROAD-MATCH FALLBACK: If strict match fails, re-attempt search ignoring character casing strings
+          // Broad text fallback filter block to catch customized entries
           const { data: fallbackRows, error: fallbackError } = await supabase
             .from('legacy_stock_counts')
             .update({ 
@@ -199,9 +226,9 @@ export default function ScanPanel({
             .select();
 
           if (fallbackError) {
-            alert(`Fallback inventory query encountered a database exception: ${fallbackError.message}`);
+            alert(`Fallback inventory query encountered an error: ${fallbackError.message}`);
           } else if (!fallbackRows || fallbackRows.length === 0) {
-            alert(`Warning: Pallet registry updated, but 0 item lines found matching criteria (Pallet: "${targetPalletSearchNumber}", Season: "${targetSeasonSearchString}"). Please confirm that counts exist on the source system.`);
+            alert(`Warning: Pallet registry updated, but 0 item lines found matching criteria (Pallet: "${targetPalletSearchNumber}", Season: "${targetSeasonSearchString}"). Please verify that counts exist under this seasonal segment.`);
           } else {
             alert(`Success! Handled broad-match transfer. Securely reassigned ${fallbackRows.length} item stock lines to Store ${storeId} as Pallet ${nextPalletNum}.`);
           }
