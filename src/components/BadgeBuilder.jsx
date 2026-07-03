@@ -62,8 +62,7 @@ export default function BadgeBuilder({
           >
             {staff.map((person) => (
               <div key={person.id} className="relative flex justify-center w-[85mm] h-[55mm] break-inside-avoid">
-                {/* INJECTING ASTERISKS FOR CODE 39 SCANNABILITY */}
-                <Badge {...person} code={`*${person.code}*`} />
+                <Badge {...person} />
               </div>
             ))}
           </div>
@@ -76,8 +75,7 @@ export default function BadgeBuilder({
             <div className="flex flex-col items-center gap-4 max-h-[350px] overflow-y-auto p-1">
               {staff.map((person) => (
                 <div key={person.id} className="relative flex justify-center w-full max-w-[85mm] h-[55mm] shadow-md rounded-lg overflow-hidden flex-shrink-0">
-                  {/* INJECTING ASTERISKS FOR CODE 39 SCANNABILITY */}
-                  <Badge {...person} code={`*${person.code}*`} />
+                  <Badge {...person} />
                   <div className="absolute top-2 right-2 flex gap-2">
                      <button onClick={() => startEdit(person)} className="bg-orange-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">✎</button>
                      <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">✕</button>
@@ -102,8 +100,7 @@ export default function BadgeBuilder({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[700px] overflow-y-auto p-2 justify-items-center">
           {staff.map((person) => (
             <div key={person.id} className="relative group flex justify-center w-[85mm] h-[55mm] shadow-md rounded-xl overflow-hidden hover:shadow-xl transition-shadow bg-white border">
-              {/* INJECTING ASTERISKS FOR CODE 39 SCANNABILITY */}
-              <Badge {...person} code={`*${person.code}*`} />
+              <Badge {...person} />
               <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                  <button onClick={() => startEdit(person)} className="bg-orange-500 hover:bg-orange-600 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center font-bold">✎</button>
                  <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center font-bold">✕</button>

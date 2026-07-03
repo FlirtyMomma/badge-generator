@@ -9,7 +9,6 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
 
     const now = new Date();
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-    // Capture hours, minutes, and seconds to guarantee absolute uniqueness per print request
     const timeStamp = now.toTimeString().slice(0, 8).replace(/:/g, '');
     const cleanSeason = viewSeason.replace(/\s+/g, '').toUpperCase();
     
@@ -22,48 +21,64 @@ export default function PrintManifest({ session, viewSeason, viewPallet }) {
     const payload = `HUB_TRANSFER:${uniqueId}:${viewSeason}:${viewPallet}:${globalPalletKey}`;
     
     const encodedPayload = encodeURIComponent(payload);
-    setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodedPayload}&format=png&ecc=M`);
+    
+    // Increased size and Error Correction Capability (ecc=H) for industrial scanning reliability
+    setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodedPayload}&format=png&ecc=H`);
   }, [viewSeason, viewPallet, session]);
 
   if (!session) return null;
 
+  const printDate = new Date().toLocaleString('en-GB');
+
   return (
     <div className="print-only hidden p-8 bg-white text-black min-h-screen font-sans">
-      <div className="border-b-4 border-black pb-4 mb-6 flex justify-between items-start">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tight mb-1">Inter-Store Stock Manifest</h1>
-          <p className="text-sm font-bold text-gray-600 tracking-wide">Allocation Route Batch Document</p>
+      
+      {/* Corporate Header */}
+      <div className="border-b-4 border-black pb-6 mb-8 flex justify-between items-start">
+        <div className="max-w-[60%]">
+          <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">Inter-Store Stock Manifest</h1>
+          <h2 className="text-xl font-bold text-gray-700 tracking-wide">Allocation Route Batch Document</h2>
+          <div className="mt-4 space-y-1 text-sm font-bold text-gray-500">
+            <p>ORIGINATING TERMINAL: <span className="text-black">{session.user?.id?.substring(0, 8).toUpperCase() || 'UNKNOWN'}</span></p>
+            <p>DOCUMENT GENERATED: <span className="text-black">{printDate}</span></p>
+          </div>
         </div>
         
-        <div className="flex flex-col items-center justify-start text-center border-2 border-black p-2 rounded-lg bg-white" style={{ width: '170px', minWidth: '170px' }}>
+        {/* High-Resolution QR Block */}
+        <div className="flex flex-col items-center justify-center text-center border-4 border-black p-3 rounded-2xl bg-white shadow-sm" style={{ width: '220px', minWidth: '220px' }}>
           {qrUrl ? (
             <img 
               src={qrUrl} 
               alt="Transfer QR Manifest Code" 
               className="block"
-              style={{ width: '150px', height: '150px', minWidth: '150px', minHeight: '150px', objectFit: 'contain' }} 
+              style={{ width: '190px', height: '190px', objectFit: 'contain' }} 
             />
           ) : (
-            <div style={{ width: '150px', height: '150px' }} className="bg-gray-100 animate-pulse rounded" />
+            <div style={{ width: '190px', height: '190px' }} className="bg-gray-100 rounded" />
           )}
-          <span className="text-[9px] font-mono font-black tracking-tighter mt-1 block select-all text-center">{manifestId}</span>
+          <span className="text-[10px] font-mono font-black tracking-widest mt-2 block select-all text-center">{manifestId}</span>
         </div>
       </div>
 
-      <div className="border-2 border-black rounded-xl p-4 mb-6 bg-gray-50 grid grid-cols-2 gap-4">
-        <div>
-          <span className="text-[10px] uppercase font-black tracking-wider text-gray-500 block">Source Target Season</span>
-          <strong className="text-lg font-bold text-black uppercase">{viewSeason}</strong>
+      {/* Data Payload Section */}
+      <div className="border-4 border-black rounded-2xl p-8 mb-8 bg-gray-50 grid grid-cols-2 gap-8">
+        <div className="border-r-2 border-dashed border-gray-300 pr-8">
+          <span className="text-sm uppercase font-black tracking-widest text-gray-500 block mb-2">Target Season</span>
+          <strong className="text-4xl font-black text-black uppercase tracking-tight">{viewSeason}</strong>
         </div>
-        <div>
-          <span className="text-[10px] uppercase font-black tracking-wider text-gray-500 block">Pallet Configuration</span>
-          <strong className="text-lg font-bold text-black">Pallet {viewPallet}</strong>
+        <div className="pl-4">
+          <span className="text-sm uppercase font-black tracking-widest text-gray-500 block mb-2">Pallet Configuration</span>
+          <strong className="text-4xl font-black text-black">Pallet #{viewPallet}</strong>
         </div>
       </div>
 
-      <div className="mt-12 border-t border-dashed border-gray-300 pt-4 text-center">
-        <p className="text-[11px] text-gray-500 max-w-md mx-auto leading-relaxed">
-          Scan the manifest QR code using the store manager mobile device application hub to acknowledge and receive stocks instantly.
+      {/* Handling Instructions */}
+      <div className="mt-16 border-t-2 border-black pt-6 text-center">
+        <h3 className="text-lg font-black uppercase tracking-widest mb-2">Receiving Instructions</h3>
+        <p className="text-sm font-bold text-gray-600 max-w-2xl mx-auto leading-relaxed">
+          To acknowledge and receive this stock transfer, the destination store must scan the QR code above using the OneBeyond Store Hub Scanner. 
+          <br/><br/>
+          <span className="text-black uppercase">Warning: This manifest QR code is a single-use token and will automatically self-destruct upon successful scan to prevent duplicate stock ledger entries.</span>
         </p>
       </div>
     </div>

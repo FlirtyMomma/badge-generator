@@ -68,12 +68,28 @@ export default function StoreStockTakeList({ session }) {
     setLoading(false);
   };
 
-  // Uses the global JsBarcode library loaded in index.html
+  // Securely loads the script from cdnjs to avoid CORB blocking
   const BarcodeRenderer = ({ value }) => {
     const svgRef = useRef(null);
+    const [scriptLoaded, setScriptLoaded] = useState(false);
 
     useEffect(() => {
-      if (svgRef.current && window.JsBarcode) {
+      if (window.JsBarcode) {
+        setScriptLoaded(true);
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js";
+      script.crossOrigin = "anonymous";
+      script.referrerPolicy = "no-referrer";
+      
+      script.onload = () => setScriptLoaded(true);
+      document.body.appendChild(script);
+    }, []);
+
+    useEffect(() => {
+      if (scriptLoaded && svgRef.current && window.JsBarcode) {
         window.JsBarcode(svgRef.current, value, {
           format: "CODE128",
           width: 2.5,        // Thicker bars for easier scanning
@@ -85,11 +101,12 @@ export default function StoreStockTakeList({ session }) {
           lineColor: "#000000"
         });
       }
-    }, [value]);
+    }, [value, scriptLoaded]);
 
     return (
-      <div className="flex flex-col items-center bg-white p-1 rounded border border-gray-100 shadow-2xs">
-        <svg ref={svgRef}></svg>
+      <div className="flex flex-col items-center bg-white p-1 rounded border border-gray-100 shadow-2xs min-w-[120px] min-h-[60px] justify-center">
+        {!scriptLoaded && <span className="text-[10px] text-gray-400 animate-pulse">Loading...</span>}
+        <svg ref={svgRef} className={!scriptLoaded ? 'hidden' : ''}></svg>
       </div>
     );
   };
