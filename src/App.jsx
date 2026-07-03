@@ -197,8 +197,8 @@ function App() {
         {/* Header */}
         <div className="bg-[#004aad] text-white pt-2 pb-3 px-4 text-center">
           <div className="flex justify-center items-center">
-            <span className="md:text-[36px] lg:text-[40px] text-[28px] font-black tracking-tighter text-[#ffcb05]">One</span>
-            <span className="md:text-[36px] lg:text-[40px] text-[28px] font-black tracking-tighter text-white">Beyond Store Hub</span>
+            <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-[#ffcb05]">One</span>
+            <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-white">Beyond Store Hub</span>
             
           </div>
         </div>
