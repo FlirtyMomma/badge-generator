@@ -92,11 +92,11 @@ export default function StoreStockTakeList({ session }) {
       if (scriptLoaded && svgRef.current && window.JsBarcode) {
         window.JsBarcode(svgRef.current, value, {
           format: "CODE128",
-          width: 2.5,        // Thicker bars for easier scanning
-          height: 50,        // Taller for handheld lasers
-          displayValue: true,// Keep this true to help you verify the code visually
-          fontSize: 12,
-          margin: 5,
+          width: 2,        // Slightly narrowed factor to fit mobile cards cleanly
+          height: 45,        
+          displayValue: true,
+          fontSize: 11,
+          margin: 4,
           background: "#ffffff",
           lineColor: "#000000"
         });
@@ -104,9 +104,9 @@ export default function StoreStockTakeList({ session }) {
     }, [value, scriptLoaded]);
 
     return (
-      <div className="flex flex-col items-center bg-white p-1 rounded border border-gray-100 shadow-2xs min-w-[120px] min-h-[60px] justify-center">
+      <div className="flex flex-col items-center bg-white p-1 rounded border border-gray-100 shadow-2xs w-full sm:w-auto min-w-[140px] min-h-[60px] justify-center">
         {!scriptLoaded && <span className="text-[10px] text-gray-400 animate-pulse">Loading...</span>}
-        <svg ref={svgRef} className={!scriptLoaded ? 'hidden' : ''}></svg>
+        <svg ref={svgRef} className={`max-w-full ${!scriptLoaded ? 'hidden' : ''}`}></svg>
       </div>
     );
   };
@@ -148,13 +148,13 @@ export default function StoreStockTakeList({ session }) {
 
       <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
         {filteredInventory.map(item => (
-          <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex justify-between items-center shadow-2xs">
+          <div key={item.barcode} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 shadow-2xs">
             <div className="min-w-0 flex-1 space-y-1">
-              <h4 className="text-sm font-black text-gray-900 uppercase tracking-tight truncate">{item.product_name}</h4>
+              <h4 className="text-sm font-black text-gray-900 uppercase tracking-tight truncate sm:whitespace-normal">{item.product_name}</h4>
               <p className="text-[10px] font-bold text-gray-500">Price: {item.priceString} each | Value: £{item.totalValue.toFixed(2)}</p>
-              <div className="inline-block bg-gray-900 text-white text-[16px] font-black px-2 py-0.5 rounded">Qty: {item.total_quantity}</div>
+              <div className="inline-block bg-gray-900 text-white text-[11px] font-black px-2 py-0.5 rounded mt-0.5">Qty: {item.total_quantity}</div>
             </div>
-            <div className="flex-shrink-0 ml-4">
+            <div className="flex-shrink-0 flex justify-center sm:justify-end">
               <BarcodeRenderer value={item.barcode} />
             </div>
           </div>
