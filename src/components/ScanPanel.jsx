@@ -424,7 +424,7 @@ export default function ScanPanel({
             <span>CODE: {scannedProduct.productCode}</span>
           </div>
           <h3 className="text-lg font-black uppercase leading-tight mb-2">{scannedProduct.name}</h3>
-          <p className="text-4xl font-black text-[#004aad] mb-3">{scannedProduct.price}</p>
+          <p className="text-4xl font-black text-[#004aad] mb-3">£{scannedProduct.price}</p>
           {scannedProduct.name !== "Product Not Found" && (
             <button onClick={handleSaveProduct} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase py-2.5 px-4 rounded-lg shadow-sm tracking-wide transition-all">
               💾 Save to Batch List
