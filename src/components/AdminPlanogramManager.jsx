@@ -9,6 +9,7 @@ export default function AdminPlanogramManager() {
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [codePrefix, setCodePrefix] = useState('');
   const [productCode, setProductCode] = useState('');
   const [resolvedBarcode, setResolvedBarcode] = useState('');
   const [productName, setProductName] = useState('');
@@ -33,7 +34,7 @@ export default function AdminPlanogramManager() {
     const delayDebounceFn = setTimeout(async () => {
       if (productCode.trim().length >= 2 && !resolvedBarcode) {
         setIsSearching(true);
-        const term = productCode.trim();
+        const term = (codePrefix.trim() + productCode.trim());
         const { data } = await supabase
           .from('store_products')
           .select('barcode, product_code, description')
@@ -43,13 +44,11 @@ export default function AdminPlanogramManager() {
         setShowSuggestions(true);
         setIsSearching(false);
       } else {
-        setShowSuggestions(false);
         setSuggestions([]);
       }
-    }, 300);
-
+    }, 400);
     return () => clearTimeout(delayDebounceFn);
-  }, [productCode, resolvedBarcode]);
+  }, [productCode, resolvedBarcode, codePrefix]);
 
   const fetchItems = async () => {
     setIsLoading(true);
@@ -67,7 +66,13 @@ export default function AdminPlanogramManager() {
   };
 
   const handleSelectSuggestion = (suggestion) => {
-    setProductCode(suggestion.product_code || suggestion.barcode);
+    const fullCode = suggestion.product_code || suggestion.barcode;
+    const prefix = codePrefix.trim();
+    let displayCode = fullCode;
+    if (prefix && fullCode.startsWith(prefix)) {
+      displayCode = fullCode.substring(prefix.length);
+    }
+    setProductCode(displayCode);
     setResolvedBarcode(suggestion.barcode);
     setProductName(suggestion.description || '');
     setShowSuggestions(false);
@@ -83,7 +88,17 @@ export default function AdminPlanogramManager() {
 
   const handleEdit = (item) => {
     setEditingId(item.id);
-    setProductCode(item.product_code || '');
+    
+    const pCode = item.product_code || '';
+    const prefix = codePrefix.trim();
+    
+    if (prefix && pCode.startsWith(prefix)) {
+      setProductCode(pCode.substring(prefix.length));
+    } else {
+      setCodePrefix('');
+      setProductCode(pCode);
+    }
+    
     setResolvedBarcode(item.barcode);
     setProductName(item.product_name);
     setBayNumber(item.bay_number);
@@ -118,7 +133,7 @@ export default function AdminPlanogramManager() {
     setIsSubmitting(true);
 
     const newRecord = {
-      product_code: productCode.trim(),
+      product_code: (codePrefix.trim() + productCode.trim()),
       barcode: resolvedBarcode,
       product_name: productName.trim() || 'Unknown Product',
       bay_number: bayNumber.trim().toUpperCase(),
@@ -261,45 +276,64 @@ export default function AdminPlanogramManager() {
           
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Product Code (or Barcode)</label>
-            <div className="relative">
-              <input 
-                id="planogram-product-code"
-                type="text" 
-                required
-                value={productCode} 
-                onChange={e => {
-                  setProductCode(e.target.value);
-                  setResolvedBarcode(''); 
-                  setShowSuggestions(true);
-                }}
-                className="w-full border p-2 rounded-lg bg-gray-50 text-sm font-mono focus:border-[#004aad] outline-none transition-colors"
-                placeholder="Type to search..."
-                autoComplete="off"
-              />
+            <div className="flex gap-2">
+              <div className="w-1/3 max-w-[100px] relative">
+                <input 
+                  type="text"
+                  value={codePrefix}
+                  onChange={e => setCodePrefix(e.target.value)}
+                  className="w-full border p-2 rounded-lg bg-white text-sm font-mono focus:border-[#004aad] outline-none transition-colors text-gray-600 placeholder:text-gray-300"
+                  placeholder="Prefix"
+                  title="Optional prefix (e.g. 145)"
+                />
+                {codePrefix && (
+                  <button type="button" onClick={() => setCodePrefix('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-500 font-bold text-xs bg-white rounded-full leading-none p-0.5">
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="relative flex-grow">
+                <input 
+                  id="planogram-product-code"
+                  type="text" 
+                  required
+                  value={productCode} 
+                  onChange={e => {
+                    setProductCode(e.target.value);
+                    setResolvedBarcode(''); 
+                    setShowSuggestions(true);
+                  }}
+                  className="w-full border p-2 rounded-lg bg-gray-50 text-sm font-mono focus:border-[#004aad] outline-none transition-colors"
+                  placeholder="Type rest of code..."
+                  autoComplete="off"
+                />
               
               {showSuggestions && (productCode.trim().length >= 2) && (
                 <div className="absolute z-50 w-full bg-white border border-gray-200 mt-1 rounded-lg shadow-xl max-h-60 overflow-y-auto">
                   {isSearching ? (
-                    <div className="p-3 text-xs text-center text-gray-400 font-bold">Searching...</div>
-                  ) : suggestions.length === 0 ? (
-                    <div className="p-3 text-xs text-center text-red-400 font-bold">No matches found.</div>
+                    <div className="p-4 text-center text-xs font-bold text-gray-400">Searching...</div>
                   ) : (
-                    suggestions.map((s, i) => (
-                      <div 
-                        key={i} 
-                        onClick={() => handleSelectSuggestion(s)}
-                        className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
-                      >
-                        <div className="font-bold text-gray-800 text-xs truncate">{s.description || 'Unknown Product'}</div>
-                        <div className="flex justify-between text-[10px] font-mono mt-0.5">
-                          <span className="text-[#004aad]">Code: {s.product_code || 'N/A'}</span>
-                          <span className="text-gray-400">BC: {s.barcode}</span>
+                    suggestions.length === 0 ? (
+                      <div className="p-4 text-center text-xs font-bold text-gray-400">No matches found.</div>
+                    ) : (
+                      suggestions.map(s => (
+                        <div 
+                          key={s.barcode} 
+                          onClick={() => handleSelectSuggestion(s)}
+                          className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
+                        >
+                          <div className="font-bold text-gray-800 text-xs truncate">{s.description || 'Unknown Product'}</div>
+                          <div className="flex justify-between text-[10px] font-mono mt-0.5">
+                            <span className="text-[#004aad]">Code: {s.product_code || 'N/A'}</span>
+                            <span className="text-gray-400">BC: {s.barcode}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ))
+                    )
                   )}
                 </div>
               )}
+              </div>
             </div>
             
             {resolvedBarcode ? (
