@@ -134,7 +134,7 @@ export default function AdminPlanogramManager() {
       const { data: existing } = await supabase
         .from('planogram_items')
         .select('id')
-        .eq('barcode', newRecord.barcode)
+        .eq('product_code', newRecord.product_code)
         .eq('season', newRecord.season)
         .maybeSingle();
       

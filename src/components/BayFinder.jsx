@@ -100,10 +100,19 @@ export default function BayFinder({ storeId }) {
     setUiPaused(true);
 
     try {
+      // Resolve the scanned barcode to its parent product_code
+      const { data: productData } = await supabase
+        .from('store_products')
+        .select('product_code')
+        .eq('barcode', cleanBarcode)
+        .maybeSingle();
+
+      const targetProductCode = productData?.product_code || cleanBarcode;
+
       const { data: items, error } = await supabase
         .from('planogram_items')
         .select('*')
-        .eq('barcode', cleanBarcode);
+        .or(`product_code.eq.${targetProductCode},barcode.eq.${cleanBarcode}`);
 
       if (error) throw error;
 
@@ -137,10 +146,11 @@ export default function BayFinder({ storeId }) {
           bayNumber: matchedItem.bay_number,
         });
         
-        // TRACKING: Log it for this store if not already logged
-        if (storeId && !scannedBarcodes.includes(cleanBarcode)) {
-          setScannedBarcodes(prev => [...prev, cleanBarcode]);
-          supabase.from('store_season_scans').insert([{ store_id: storeId, season: season, barcode: cleanBarcode }])
+        // TRACKING: Log it by product_code so ANY barcode clears it
+        const trackingCode = matchedItem.product_code || cleanBarcode;
+        if (storeId && !scannedBarcodes.includes(trackingCode)) {
+          setScannedBarcodes(prev => [...prev, trackingCode]);
+          supabase.from('store_season_scans').insert([{ store_id: storeId, season: season, barcode: trackingCode }])
             .then(({error: insertErr}) => {
               if(insertErr) console.error("Failed to log scan:", insertErr);
             });
@@ -226,7 +236,7 @@ export default function BayFinder({ storeId }) {
     return () => { stopCamera(); };
   }, [uiPaused]);
 
-  const missingItems = expectedItems.filter(item => !scannedBarcodes.includes(item.barcode));
+  const missingItems = expectedItems.filter(item => !scannedBarcodes.includes(item.product_code || item.barcode));
   
   const missingByBay = missingItems.reduce((acc, item) => {
     if (!acc[item.bay_number]) acc[item.bay_number] = [];
