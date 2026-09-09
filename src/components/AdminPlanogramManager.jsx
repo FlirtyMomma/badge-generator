@@ -97,9 +97,7 @@ export default function AdminPlanogramManager() {
     setProductCode('');
     setResolvedBarcode('');
     setProductName('');
-    setBayNumber('');
-    setSeason(SEASONS[0]);
-    setSelectedSizes(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']);
+    // Intentionally keeping bayNumber, season, and selectedSizes for faster consecutive entry
   };
 
   const handleSubmit = async (e) => {
