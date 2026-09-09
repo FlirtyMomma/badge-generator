@@ -67,9 +67,9 @@ export default function AdminPlanogramManager() {
 
   const handleSelectSuggestion = (suggestion) => {
     const fullCode = suggestion.product_code || suggestion.barcode;
-    const prefix = codePrefix.trim();
+    const prefix = codePrefix.trim().toUpperCase();
     let displayCode = fullCode;
-    if (prefix && fullCode.startsWith(prefix)) {
+    if (prefix && fullCode.toUpperCase().startsWith(prefix)) {
       displayCode = fullCode.substring(prefix.length);
     }
     setProductCode(displayCode);
@@ -90,9 +90,9 @@ export default function AdminPlanogramManager() {
     setEditingId(item.id);
     
     const pCode = item.product_code || '';
-    const prefix = codePrefix.trim();
+    const prefix = codePrefix.trim().toUpperCase();
     
-    if (prefix && pCode.startsWith(prefix)) {
+    if (prefix && pCode.toUpperCase().startsWith(prefix)) {
       setProductCode(pCode.substring(prefix.length));
     } else {
       setCodePrefix('');
@@ -133,7 +133,7 @@ export default function AdminPlanogramManager() {
     setIsSubmitting(true);
 
     const newRecord = {
-      product_code: (codePrefix.trim() + productCode.trim()),
+      product_code: (codePrefix.trim() + productCode.trim()).toUpperCase(),
       barcode: resolvedBarcode,
       product_name: productName.trim() || 'Unknown Product',
       bay_number: bayNumber.trim().toUpperCase(),
@@ -281,7 +281,7 @@ export default function AdminPlanogramManager() {
                 <input 
                   type="text"
                   value={codePrefix}
-                  onChange={e => setCodePrefix(e.target.value)}
+                  onChange={e => setCodePrefix(e.target.value.toUpperCase())}
                   className="w-full border p-2 rounded-lg bg-white text-sm font-mono focus:border-[#004aad] outline-none transition-colors text-gray-600 placeholder:text-gray-300"
                   placeholder="Prefix"
                   title="Optional prefix (e.g. 145)"
@@ -299,7 +299,7 @@ export default function AdminPlanogramManager() {
                   required
                   value={productCode} 
                   onChange={e => {
-                    setProductCode(e.target.value);
+                    setProductCode(e.target.value.toUpperCase());
                     setResolvedBarcode(''); 
                     setShowSuggestions(true);
                   }}
