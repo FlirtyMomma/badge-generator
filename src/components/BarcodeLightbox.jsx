@@ -75,7 +75,7 @@ export default function BarcodeLightbox({ activeZoomBarcode, setActiveZoomBarcod
           <div className="w-px bg-gray-300"></div>
           <span className="flex flex-col items-center">
             <span className="text-[9px] font-black uppercase tracking-wider">Unit Price</span>
-            <strong className="text-[#004aad] font-black text-sm">{activeZoomBarcode.price}</strong>
+            <strong className="text-[#004aad] font-black text-sm">£{activeZoomBarcode.price}</strong>
           </span>
         </div>
 
