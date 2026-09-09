@@ -1,23 +1,27 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense, lazy } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Toaster, toast } from 'react-hot-toast';
 import { supabase } from './supabaseClient';
 import Navigation from './components/Navigation';
-import BadgeBuilder from './components/BadgeBuilder';
-import ScanPanel from './components/ScanPanel';
-import SavedBatchList from './components/SavedBatchList';
-import LegacyStoreCount from './components/LegacyStoreCount';
-import DbMaster from './components/DbMaster';
 import BarcodeLightbox from './components/BarcodeLightbox';
-import AdminLegacyDashboard from './components/AdminLegacyDashboard';
-import StoreStockTakeList from './components/StoreStockTakeList';
 import PrintManifest from './components/PrintManifest';
-import TransferHistory from './components/TransferHistory';
+import SavedBatchList from './components/SavedBatchList';
+import AdminLegacyDashboard from './components/AdminLegacyDashboard';
+
+// Lazy load heavy components
+const BadgeBuilder = lazy(() => import('./components/BadgeBuilder'));
+const ScanPanel = lazy(() => import('./components/ScanPanel'));
+const LegacyStoreCount = lazy(() => import('./components/LegacyStoreCount'));
+const DbMaster = lazy(() => import('./components/DbMaster'));
+const StoreStockTakeList = lazy(() => import('./components/StoreStockTakeList'));
+const TransferHistory = lazy(() => import('./components/TransferHistory'));
+const BayFinder = lazy(() => import('./components/BayFinder'));
+const AdminPlanogramManager = lazy(() => import('./components/AdminPlanogramManager'));
 
 function App() {
-  const [mode, setMode] = useState(() => {
-    const saved = localStorage.getItem('onebeyond_active_tab') || 'priceCheck';
-    return (saved === 'login') ? 'priceCheck' : saved;
-  });
-  
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [scannedProduct, setScannedProduct] = useState(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -25,7 +29,6 @@ function App() {
   const contentRef = useRef(null);
 
   const [session, setSession] = useState(null);
-  // NEW: Add a loading state so the app doesn't panic before Supabase connects
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [storeId, setStoreId] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
@@ -51,12 +54,7 @@ function App() {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
   });
 
-  // UPDATED: Only boot the user to the scanner IF auth has completely finished loading
-  useEffect(() => {
-    if (!isAuthLoading && !session && ['badges', 'legacy', 'stockTake', 'history', 'admin'].includes(mode)) {
-      setMode('priceCheck');
-    }
-  }, [session, mode, isAuthLoading]);
+  useEffect(() => { localStorage.setItem('onebeyond_saved_products', JSON.stringify(savedProducts)); }, [savedProducts]);
 
   const handleLogoutStore = async () => {
     try {
@@ -70,7 +68,7 @@ function App() {
     setEmailInput('');
     setPasswordInput('');
     setIsLoggingIn(false);
-    setMode('priceCheck'); 
+    navigate('/login'); 
   };
 
   useEffect(() => {
@@ -82,7 +80,7 @@ function App() {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         handleLogoutStore();
-        alert("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
+        toast.error("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
       }, INACTIVITY_LIMIT);
     };
 
@@ -100,14 +98,13 @@ function App() {
       window.removeEventListener('keypress', resetTimeout);
       window.removeEventListener('scroll', resetTimeout);
     };
-  }, [session]);
+  }, [session, navigate]);
 
-  // UPDATED: Tell the app when Supabase has finished its initial check
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       if (currentSession) fetchStoreProfile(currentSession.user.id);
-      setIsAuthLoading(false); // Connection check complete
+      setIsAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
@@ -118,14 +115,11 @@ function App() {
         setStoreId('');
         setIsSystemAdmin(false);
       }
-      setIsAuthLoading(false); // State updated
+      setIsAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => { localStorage.setItem('onebeyond_active_tab', mode); }, [mode]);
-  useEffect(() => { localStorage.setItem('onebeyond_saved_products', JSON.stringify(savedProducts)); }, [savedProducts]);
 
   const fetchStoreProfile = async (userId) => {
     const { data } = await supabase.from('store_profiles').select('store_id, is_admin').eq('id', userId).single();
@@ -146,19 +140,41 @@ function App() {
     });
 
     if (error) {
-      alert(`Login Failed: ${error.message}`);
+      toast.error(`Login Failed: ${error.message}`);
     } else if (data?.session) {
       setSession(data.session);
       fetchStoreProfile(data.session.user.id);
-      setMode('legacy'); 
+      navigate('/legacy'); 
     }
     setIsLoggingIn(false);
   };
 
   const handleManualLogoutClick = () => {
-    if (window.confirm("Log out of this store instance portal?")) {
-      handleLogoutStore();
-    }
+    toast((t) => (
+      <div className="flex flex-col gap-3 p-1 text-center">
+        <span className="text-sm font-bold text-gray-800">Log out of this store instance portal?</span>
+        <div className="flex gap-2 justify-center mt-1">
+          <button 
+            onClick={() => toast.dismiss(t.id)} 
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={() => {
+              toast.dismiss(t.id);
+              handleLogoutStore();
+            }} 
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-md transition-colors"
+          >
+            Log Out
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: Infinity,
+      position: 'top-center'
+    });
   };
 
   const lookUpProduct = async (barcode) => {
@@ -172,15 +188,15 @@ function App() {
     }
   };
 
-  const isDataDenseView = mode === 'admin' || mode === 'stockTake' || mode === 'history';
+  const isDataDenseView = ['/admin', '/admin/planograms', '/stock-take', '/history', '/bay-finder'].includes(location.pathname);
 
-  // Optional: Prevent the screen from flashing empty boxes while Supabase checks the session
   if (isAuthLoading) {
     return <div className="min-h-screen bg-gray-100 flex items-center justify-center font-bold text-gray-400">Loading Terminal...</div>;
   }
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
+      <Toaster position="top-center" />
       
       {session && storeId && (
         <div className="w-full max-w-7xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
@@ -189,26 +205,20 @@ function App() {
         </div>
       )}
 
-      {/* 1. GLOBAL HEADER CARD - NEVER MOVES */}
+      {/* GLOBAL HEADER CARD */}
       <div className="w-full max-w-7xl bg-[#004aad] p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
         <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center tracking-tight">
-          
-
-        {/* Header */}
-        <div className="bg-[#004aad] text-white pt-2 pb-3 px-4 text-center">
-          <div className="flex justify-center items-center">
-            <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-[#ffcb05]">One</span>
-            <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-white">Beyond Store Hub</span>
-            
+          <div className="bg-[#004aad] text-white pt-2 pb-3 px-4 text-center">
+            <div className="flex justify-center items-center">
+              <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-[#ffcb05]">One</span>
+              <span className="md:text-[36px] sm:text-[28px] lg:text-[40px] text-[24px] font-black tracking-tighter text-white">Beyond Store Hub</span>
+            </div>
           </div>
-        </div>
-
-
         </h1>
-        <Navigation mode={mode} setMode={setMode} isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
+        <Navigation isSystemAdmin={isSystemAdmin} session={session} storeId={storeId} />
       </div>
 
-      {/* 2. DYNAMIC CONTENT AREA */}
+      {/* DYNAMIC CONTENT AREA */}
       <div className={`w-full transition-all duration-300 ${
         isDataDenseView 
           ? 'max-w-7xl grid grid-cols-1 gap-6' 
@@ -216,74 +226,116 @@ function App() {
       }`}>
         
         {/* Left/Main Column Form View */}
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 no-print w-full mb-6 xl:mb-0">
-          {mode === 'login' && !session && (
-            <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
-              <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
-              <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="coalville.155@onebeyond.co.uk" required />
-              <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="Store Password" required />
-              <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md">Sign In</button>
-            </form>
-          )}
+        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 no-print w-full mb-6 xl:mb-0 min-h-[400px]">
+          <Suspense fallback={<div className="w-full h-full flex justify-center items-center font-bold text-gray-400">Loading Module...</div>}>
+            <Routes>
+              <Route path="/login" element={
+                !session ? (
+                  <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
+                    <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
+                    <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="coalville.155@onebeyond.co.uk" required />
+                    <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="Store Password" required />
+                    <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md">Sign In</button>
+                  </form>
+                ) : <Navigate to="/" />
+              } />
 
-          {mode === 'badges' && session && (
-            <BadgeBuilder 
-              contentRef={contentRef} 
-              layoutMode="leftColumn" 
-              staff={staff} 
-              setStaff={setStaff} 
-              form={form} 
-              setForm={setForm} 
-              editingId={editingId} 
-              setEditingId={setEditingId} 
-            />
-          )}
+              <Route path="/badges" element={
+                session ? (
+                  <BadgeBuilder 
+                    contentRef={contentRef} 
+                    layoutMode="leftColumn" 
+                    staff={staff} 
+                    setStaff={setStaff} 
+                    form={form} 
+                    setForm={setForm} 
+                    editingId={editingId} 
+                    setEditingId={setEditingId} 
+                  />
+                ) : <Navigate to="/login" />
+              } />
 
-          {mode === 'priceCheck' && (
-            <ScanPanel 
-              mode={mode} 
-              lookUpProduct={lookUpProduct} 
-              scannedProduct={scannedProduct} 
-              setScannedProduct={setScannedProduct} 
-              setActiveZoomBarcode={setActiveZoomBarcode} 
-              savedProducts={savedProducts} 
-              setSavedProducts={setSavedProducts}
-              session={session} 
-              storeId={storeId} 
-            />
-          )}
-          
-          {mode === 'legacy' && session && (
-            <LegacyStoreCount mode={mode} session={session} lookUpProduct={lookUpProduct} scannedProduct={scannedProduct} setScannedProduct={setScannedProduct} setActivePrintSeason={setActivePrintSeason} setActivePrintPallet={setActivePrintPallet} />
-          )}
-          
-          {mode === 'stockTake' && session && <StoreStockTakeList session={session} />}
-          
-          {mode === 'admin' && session && <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} />}
-          
-          {mode === 'history' && session && <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} />}
+              <Route path="/" element={
+                <ScanPanel 
+                  lookUpProduct={lookUpProduct} 
+                  scannedProduct={scannedProduct} 
+                  setScannedProduct={setScannedProduct} 
+                  setActiveZoomBarcode={setActiveZoomBarcode} 
+                  savedProducts={savedProducts} 
+                  setSavedProducts={setSavedProducts}
+                  session={session} 
+                  storeId={storeId} 
+                />
+              } />
+              
+              <Route path="/legacy" element={
+                session ? (
+                  <LegacyStoreCount 
+                    session={session} 
+                    lookUpProduct={lookUpProduct} 
+                    scannedProduct={scannedProduct} 
+                    setScannedProduct={setScannedProduct} 
+                    setActivePrintSeason={setActivePrintSeason} 
+                    setActivePrintPallet={setActivePrintPallet} 
+                  />
+                ) : <Navigate to="/login" />
+              } />
+              
+              <Route path="/stock-take" element={
+                session ? <StoreStockTakeList session={session} /> : <Navigate to="/login" />
+              } />
+              
+              <Route path="/admin" element={
+                session && isSystemAdmin ? <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} /> : <Navigate to="/" />
+              } />
+              
+              <Route path="/history" element={
+                session ? <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} /> : <Navigate to="/login" />
+              } />
+              
+              <Route path="/bay-finder" element={<BayFinder storeId={storeId} />} />
+              <Route path="/admin/planograms" element={
+                session && isSystemAdmin ? <AdminPlanogramManager /> : <Navigate to="/" />
+              } />
+            </Routes>
+          </Suspense>
         </div>
 
         {/* Right Side Column (Previews & Layouts) */}
         {!isDataDenseView && (
           <div className="hidden xl:block w-full no-print">
-            {mode === 'badges' && session && (
-              <BadgeBuilder 
-                contentRef={contentRef} 
-                layoutMode="rightColumn" 
-                staff={staff} 
-                setStaff={setStaff} 
-                form={form} 
-                setForm={setForm} 
-                editingId={editingId} 
-                setEditingId={setEditingId} 
-              />
-            )}
-            {mode === 'priceCheck' && <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />}
-            {mode === 'legacy' && session && (isSystemAdmin ? <AdminLegacyDashboard /> : <div className="bg-white p-8 rounded-xl border text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">📦 Vault Audit Live</div>)}
+            <Suspense fallback={<div className="bg-white p-8 rounded-xl border text-center text-gray-400 min-h-[500px] flex justify-center items-center">Loading Preview...</div>}>
+              <Routes>
+                <Route path="/badges" element={
+                  session ? (
+                    <BadgeBuilder 
+                      contentRef={contentRef} 
+                      layoutMode="rightColumn" 
+                      staff={staff} 
+                      setStaff={setStaff} 
+                      form={form} 
+                      setForm={setForm} 
+                      editingId={editingId} 
+                      setEditingId={setEditingId} 
+                    />
+                  ) : null
+                } />
+                <Route path="/" element={
+                  <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
+                } />
+                <Route path="/bay-finder" element={
+                  <SavedBatchList savedProducts={savedProducts} setSavedProducts={setSavedProducts} setActiveZoomBarcode={setActiveZoomBarcode} />
+                } />
+                <Route path="/legacy" element={
+                  session ? (
+                    isSystemAdmin ? <AdminLegacyDashboard /> : <div className="bg-white p-8 rounded-xl border text-center text-gray-400 min-h-[500px] flex flex-col justify-center items-center">📦 Vault Audit Live</div>
+                  ) : null
+                } />
+                <Route path="*" element={null} />
+              </Routes>
+            </Suspense>
           </div>
         )}
-
       </div>
 
       <BarcodeLightbox activeZoomBarcode={activeZoomBarcode} setActiveZoomBarcode={setActiveZoomBarcode} />

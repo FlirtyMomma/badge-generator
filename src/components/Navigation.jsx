@@ -1,5 +1,8 @@
-export default function Navigation({ mode, setMode, isSystemAdmin, session, storeId }) {
+import { Link, useLocation } from 'react-router-dom';
 
+export default function Navigation({ isSystemAdmin, session, storeId }) {
+  const location = useLocation();
+  const currentPath = location.pathname;
   
   // Base: Bordered, rounded, and subtle transitions
   const baseBtn = "flex-1 md:flex-none min-w-[90px] flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg transition-all duration-300 uppercase font-black text-[10px] tracking-widest border";
@@ -13,61 +16,76 @@ export default function Navigation({ mode, setMode, isSystemAdmin, session, stor
   return (
     <div className="flex flex-wrap justify-start md:justify-center bg-gray-50 p-1.5 rounded-xl text-[11px] md:text-xs font-black gap-1.5 shadow-inner border border-gray-200 md:w-fit md:mx-auto">
       
-      <button 
-        onClick={() => setMode('priceCheck')} 
-        className={`${baseBtn} ${mode === 'priceCheck' ? activeClass : inactiveClass}`}
+      <Link 
+        to="/" 
+        className={`${baseBtn} ${currentPath === '/' ? activeClass : inactiveClass}`}
       >
         Price Checker
-      </button>
+      </Link>
+      
+      <Link 
+        to="/bay-finder" 
+        className={`${baseBtn} ${currentPath === '/bay-finder' ? activeClass : inactiveClass}`}
+      >
+        Bay Finder
+      </Link>
       
       {session && (
         <>
-          <button 
-            onClick={() => setMode('badges')} 
-            className={`${baseBtn} ${mode === 'badges' ? activeClass : inactiveClass}`}
+          <Link 
+            to="/badges" 
+            className={`${baseBtn} ${currentPath === '/badges' ? activeClass : inactiveClass}`}
           >
             Badges
-          </button>
+          </Link>
 
-          <button 
-            onClick={() => setMode('legacy')} 
-            className={`${baseBtn} ${mode === 'legacy' ? activeClass : inactiveClass}`}
+          <Link 
+            to="/legacy" 
+            className={`${baseBtn} ${currentPath === '/legacy' ? activeClass : inactiveClass}`}
           >
            {storeId || 'Store'} Legacy
-          </button>
+          </Link>
           
-          <button 
-            onClick={() => setMode('stockTake')} 
-            className={`${baseBtn} ${mode === 'stockTake' ? activeClass : inactiveClass}`}
+          <Link 
+            to="/stock-take" 
+            className={`${baseBtn} ${currentPath === '/stock-take' ? activeClass : inactiveClass}`}
           >
             Stock
-          </button>
+          </Link>
 
-          <button 
-            onClick={() => setMode('history')} 
-            className={`${baseBtn} ${mode === 'history' ? activeClass : inactiveClass}`}
+          <Link 
+            to="/history" 
+            className={`${baseBtn} ${currentPath === '/history' ? activeClass : inactiveClass}`}
           >
             Audit Trail
-          </button>
+          </Link>
         </>
       )}
 
       {!session && (
-        <button 
-          onClick={() => setMode('login')} 
-          className={`${baseBtn} ${mode === 'login' ? activeClass : inactiveClass}`}
+        <Link 
+          to="/login" 
+          className={`${baseBtn} ${currentPath === '/login' ? activeClass : inactiveClass}`}
         >
           Sign In
-        </button>
+        </Link>
       )}
       
       {isSystemAdmin && (
-        <button 
-          onClick={() => setMode('admin')} 
-          className={`${baseBtn} ${mode === 'admin' ? activeClass : inactiveClass}`}
-        >
-          DB Master
-        </button>
+        <>
+          <Link 
+            to="/admin" 
+            className={`${baseBtn} ${currentPath === '/admin' ? activeClass : inactiveClass}`}
+          >
+            DB Master
+          </Link>
+          <Link 
+            to="/admin/planograms" 
+            className={`${baseBtn} ${currentPath === '/admin/planograms' ? activeClass : inactiveClass}`}
+          >
+            Planograms
+          </Link>
+        </>
       )}
     </div>
   );

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { toast } from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
+import { TRANSFER_PREFIX } from '../constants';
 import SavedBatchList from './SavedBatchList';
 
 export default function ScanPanel({ 
-  mode, 
   lookUpProduct, 
   scannedProduct, 
   setScannedProduct, 
@@ -40,28 +41,24 @@ export default function ScanPanel({
     }
   };
 
-  // CORE INTERCEPT: Multi-stage relational unique pallet transfer with burn-on-read & audit logging
   const handleScannedDataValidation = async (text) => {
     const cleanText = text.trim();
     if (!cleanText) return;
 
-    if (cleanText.startsWith("HUB_TRANSFER:")) {
+    if (cleanText.startsWith(TRANSFER_PREFIX)) {
       playSuccessBeep();
       stopCamera();
       setUiPaused(true);
 
-      // 1. HARD SECURITY CHECK: Block unauthorised terminals
       if (!session || !storeId || !session.user?.id) {
-        alert("Access Denied: You must be logged into a valid store terminal node to process stock transfers.");
+        toast.error("Access Denied: You must be logged into a valid store terminal node to process stock transfers.", { duration: 5000 });
         setScannedProduct(null);
         setUiPaused(false);
         return;
       }
 
-      // Parse out our composite unique token signature keys
       const [_, transferId, season, originalPalletNum, globalPalletKey] = cleanText.split(":");
       
-      // 2. BURN-ON-READ VALIDATION: Ensure this QR code has never been used before
       try {
         const { data: consumedRecord, error: consumedError } = await supabase
           .from('consumed_manifests')
@@ -73,13 +70,13 @@ export default function ScanPanel({
 
         if (consumedRecord) {
           const formattedDate = new Date(consumedRecord.consumed_at).toLocaleString('en-GB');
-          alert(`EXPIRED MANIFEST DETECTED\n\nThis QR code has already been scanned and processed by Store ${consumedRecord.consumed_by_store} on ${formattedDate}.\n\nIt can no longer be used. If this stock is moving again, a brand new manifest must be generated from the source terminal.`);
+          toast.error(`EXPIRED MANIFEST DETECTED\n\nThis QR code has already been scanned and processed by Store ${consumedRecord.consumed_by_store} on ${formattedDate}.\n\nIt can no longer be used.`, { duration: 8000 });
           setScannedProduct(null);
           setUiPaused(false);
           return;
         }
       } catch (err) {
-        alert(`Security Validation Error: Unable to verify manifest status. (${err.message})`);
+        toast.error(`Security Validation Error: Unable to verify manifest status. (${err.message})`);
         setScannedProduct(null);
         setUiPaused(false);
         return;
@@ -87,9 +84,8 @@ export default function ScanPanel({
 
       const targetPalletSearchNumber = originalPalletNum.replace(/\D/g, '').trim();
       const targetSeasonSearchString = season.trim();
-      const sourcePalletLookupKey = globalPalletKey || `${targetSeasonSearchString.replace(/\s+/g, '').toUpperCase()}-P${targetPalletSearchNumber}`;
+      const sourcePalletLookupKey = globalPalletKey || `${targetSeasonSearchString.replace(/\\s+/g, '').toUpperCase()}-P${targetPalletSearchNumber}`;
 
-      // 3. LIVE OWNERSHIP VALIDATION: Fetch active pallet information record
       let activePalletRecord = null;
       try {
         const { data, error: fetchError } = await supabase
@@ -101,13 +97,12 @@ export default function ScanPanel({
         if (fetchError) throw fetchError;
         activePalletRecord = data;
       } catch (err) {
-        alert(`Transfer Error: Unable to query registry database. (${err.message})`);
+        toast.error(`Transfer Error: Unable to query registry database. (${err.message})`);
         setScannedProduct(null);
         setUiPaused(false);
         return;
       }
 
-      // If the master tracking pallet doesn't exist yet, look up who has those items counted right now
       let sourceUserUuid = null;
       if (activePalletRecord) {
         const { data: oldProfile } = await supabase
@@ -118,7 +113,6 @@ export default function ScanPanel({
         if (oldProfile) sourceUserUuid = oldProfile.id;
       }
 
-      // Fallback: If no wrapper exists yet, query the items directly to see who counted them
       if (!sourceUserUuid) {
         const { data: sampleCount } = await supabase
           .from('legacy_stock_counts')
@@ -131,7 +125,6 @@ export default function ScanPanel({
         if (sampleCount) sourceUserUuid = sampleCount.user_id;
       }
 
-      // If the pallet wrapper entry doesn't exist in the registry tracking index, initialise it
       if (!activePalletRecord) {
         let inferredOriginStore = 'INITIAL_MANIFEST_ORIGIN';
         if (sourceUserUuid) {
@@ -150,7 +143,7 @@ export default function ScanPanel({
           .single();
 
         if (insertError) {
-          alert(`Registry Initialisation Failed: ${insertError.message}`);
+          toast.error(`Registry Initialisation Failed: ${insertError.message}`);
           setScannedProduct(null);
           setUiPaused(false);
           return;
@@ -158,16 +151,14 @@ export default function ScanPanel({
         activePalletRecord = newPallet;
       }
 
-      // 4. REDUNDANCY SAFEGUARD: Block operations if your store already owns this configuration
       if (activePalletRecord.current_owner_store_id === storeId || sourceUserUuid === session.user.id) {
-        alert(`Operation Cancelled: Store ${storeId} already holds the active user configuration for this seasonal stock container.`);
+        toast.error(`Operation Cancelled: Store ${storeId} already holds the active user configuration for this seasonal stock container.`, { duration: 5000 });
         setScannedProduct(null);
         setUiPaused(false);
         return;
       }
 
-      // 5. AUTO-INCREMENT CALCULATOR: Find the highest sequence number the receiving store owns for this season
-      const cleanSeasonTag = targetSeasonSearchString.replace(/\s+/g, '').toUpperCase();
+      const cleanSeasonTag = targetSeasonSearchString.replace(/\\s+/g, '').toUpperCase();
       let nextPalletNum = 1;
 
       try {
@@ -196,12 +187,31 @@ export default function ScanPanel({
 
       const destinationPalletKey = `${cleanSeasonTag}-P${nextPalletNum}`;
 
-      const confirmReceipt = window.confirm(
-        `STOCK MANIFEST VALIDATED\n\nIncoming: ${targetSeasonSearchString} (Originally Pallet ${targetPalletSearchNumber})\nDestination: Store ${storeId}\n\nAction: This stock will be appended as a brand new Pallet record entry: "Pallet ${nextPalletNum}" under your store holdings.\n\nExecute database ownership transfer?`
-      );
+      const confirmReceipt = await new Promise((resolve) => {
+        toast((t) => (
+          <div className="flex flex-col gap-3 p-1 max-w-sm">
+            <span className="text-sm font-bold text-gray-800 whitespace-pre-wrap">
+              {`STOCK MANIFEST VALIDATED\n\nIncoming: ${targetSeasonSearchString} (Originally Pallet ${targetPalletSearchNumber})\nDestination: Store ${storeId}\n\nAction: This stock will be appended as a brand new Pallet record entry: "Pallet ${nextPalletNum}" under your store holdings.\n\nExecute database ownership transfer?`}
+            </span>
+            <div className="flex gap-2 justify-end mt-2">
+              <button 
+                onClick={() => { toast.dismiss(t.id); resolve(false); }} 
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => { toast.dismiss(t.id); resolve(true); }} 
+                className="px-4 py-2 bg-[#004aad] hover:bg-blue-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-md transition-colors"
+              >
+                Transfer
+              </button>
+            </div>
+          </div>
+        ), { duration: Infinity, position: 'top-center' });
+      });
 
       if (confirmReceipt) {
-        // 6. TRANSACTION ENGINE PHASE 1: Update/Upsert the master pallet tracking container row
         const { error: updateError } = await supabase
           .from('store_pallets')
           .upsert({ 
@@ -212,13 +222,12 @@ export default function ScanPanel({
           });
 
         if (updateError) {
-          alert(`Database Write Rejection: ${updateError.message}`);
+          toast.error(`Database Write Rejection: ${updateError.message}`);
           setScannedProduct(null);
           setUiPaused(false);
           return;
         }
 
-        // PHASE 2: DIAGNOSTIC RELATIONAL INVENTORY MIGRATION
         const { data: sampleRows } = await supabase
           .from('legacy_stock_counts')
           .select('pallet_number, season_type')
@@ -226,13 +235,12 @@ export default function ScanPanel({
           .limit(5);
 
         if (!sampleRows || sampleRows.length === 0) {
-          alert(`Diagnostic Error:\n\nNo stock lines found in your database table for the season "${targetSeasonSearchString}" at all.\n\nPlease check your spelling or verify that counts have been uploaded.`);
+          toast.error(`Diagnostic Error:\n\nNo stock lines found in your database table for the season "${targetSeasonSearchString}".`, { duration: 6000 });
           setScannedProduct(null);
           setUiPaused(false);
           return;
         }
 
-        // Execute relational shift using multiple layout string format variables to guarantee a match lock
         const { data: movedRows, error: inventoryError } = await supabase
           .from('legacy_stock_counts')
           .update({ 
@@ -246,15 +254,14 @@ export default function ScanPanel({
         let finalItemCount = 0;
 
         if (inventoryError) {
-          alert(`Pallet tracking registry initialised, but underlying item balances failed to re-allocate: ${inventoryError.message}`);
+          toast.error(`Pallet tracking registry initialised, but underlying item balances failed to re-allocate: ${inventoryError.message}`, { duration: 6000 });
         } else if (!movedRows || movedRows.length === 0) {
           const sampleList = sampleRows.map(r => `Pallet: "${r.pallet_number}" | Season: "${r.season_type}"`).join('\n');
-          alert(`Match Failure (0 rows updated):\n\nYour manifest wanted Pallet "${targetPalletSearchNumber}" for "${targetSeasonSearchString}".\n\nBut here is what your database actually contains:\n${sampleList}\n\nPlease update your print configuration or input values to match.`);
+          toast.error(`Match Failure (0 rows updated):\n\nYour manifest wanted Pallet "${targetPalletSearchNumber}" for "${targetSeasonSearchString}".\n\nBut here is what your database actually contains:\n${sampleList}`, { duration: 8000 });
         } else {
           
           finalItemCount = movedRows.length;
 
-          // PHASE 3: BURN THE MANIFEST & WRITE AUDIT TRAIL
           const originStoreId = activePalletRecord?.current_owner_store_id || 'UNKNOWN';
 
           const { error: burnError } = await supabase
@@ -277,9 +284,9 @@ export default function ScanPanel({
             
           if (burnError || auditError) {
             console.error("Audit log failure:", burnError || auditError);
-            alert(`Transfer Success! (Warning: Could not completely write to the digital audit trail due to network connection, please retain the physical printout).`);
+            toast.success(`Transfer Success! (Warning: Could not completely write to the digital audit trail due to network connection, please retain the physical printout).`, { duration: 6000 });
           } else {
-            alert(`Success! Securely transferred ${finalItemCount} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}. \n\nThe manifest QR code has been permanently deactivated.`);
+            toast.success(`Success! Securely transferred ${finalItemCount} item stock lines to Store ${storeId} database layouts as Pallet ${nextPalletNum}.`, { duration: 6000 });
           }
         }
       }
@@ -293,7 +300,7 @@ export default function ScanPanel({
   };
 
   const startCamera = async () => {
-    setCameraError(false); // Reset error state before attempting to launch
+    setCameraError(false); 
     try {
       if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("reader");
       if (html5QrcodeRef.current.isScanning) return;
@@ -333,7 +340,6 @@ export default function ScanPanel({
         );
         setIsScanning(true);
       } catch (fallbackErr) {
-        // Silently catch the error and update the UI state instead of firing an alert
         console.error("Camera acquisition failure:", fallbackErr);
         setCameraError(true);
       }
@@ -352,18 +358,18 @@ export default function ScanPanel({
   };
 
   useEffect(() => {
-    if (mode === 'priceCheck' && !uiPaused) {
+    if (!uiPaused) {
       startCamera();
     } else {
       stopCamera();
     }
     return () => { stopCamera(); };
-  }, [mode, uiPaused]);
+  }, [uiPaused]);
 
   const handleSaveProduct = () => {
     if (!scannedProduct) return;
     if (savedProducts.some(p => p.barcode === scannedProduct.barcode)) {
-      alert("This product is already in your batch list.");
+      toast.error("This product is already in your batch list.");
       return;
     }
     setSavedProducts([{ ...scannedProduct, savedAt: Date.now() }, ...savedProducts]);
@@ -392,7 +398,6 @@ export default function ScanPanel({
           </div>
         )}
 
-        {/* The new silent error state for PC users without a camera */}
         {cameraError && !uiPaused && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
             <p className="text-red-400 font-bold text-[11px] uppercase tracking-wider mb-2">📸 Camera Not Detected</p>

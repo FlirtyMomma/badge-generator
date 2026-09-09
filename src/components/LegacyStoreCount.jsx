@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../supabaseClient';
+import { toast } from 'react-hot-toast';
 
 export default function LegacyStoreCount({ 
   mode, 
@@ -221,7 +222,7 @@ export default function LegacyStoreCount({
     const targetQuantity = quantityOverride !== null ? quantityOverride : parseInt(quantity);
 
     if (!scannedProduct || scannedProduct.name === "Product Not Found" || !targetQuantity || targetQuantity <= 0) {
-      alert("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
+      toast.error("Validation Error: Cannot log an uncatalogued item. Please correct the barcode.");
       return;
     }
 
@@ -237,7 +238,7 @@ export default function LegacyStoreCount({
       .eq('barcode', scannedProduct.barcode);
 
     if (checkError) {
-      alert("Database lookup error.");
+      toast.error("Database lookup error.");
       setIsSubmitting(false);
       return;
     }
@@ -269,11 +270,12 @@ export default function LegacyStoreCount({
     }
 
     if (!saveError) {
+      toast.success("Item saved");
       setScannedProduct(null);
       setQuantity('1');
       setUiPaused(false);
     } else {
-      alert("Database error saving item.");
+      toast.error("Database error saving item.");
     }
     setIsSubmitting(false);
   };
@@ -283,19 +285,60 @@ export default function LegacyStoreCount({
     handleCommitItem(null, value);
   };
 
-  const handleUpdateQuantity = async (id, currentQty) => {
-    const newQty = prompt("Enter corrected quantity standard:", currentQty);
-    if (newQty === null) return;
-    const parsed = parseInt(newQty);
-    
-    if (!isNaN(parsed) && parsed >= 0) {
-      if (parsed === 0) {
-        await supabase.from('legacy_stock_counts').delete().eq('id', id);
-      } else {
-        await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
-      }
-      fetchStoreSeasonCounts();
-    }
+  const handleUpdateQuantity = (id, currentQty) => {
+    toast((t) => (
+      <div className="flex flex-col gap-3 p-1">
+        <span className="text-sm font-bold text-gray-800">Enter corrected quantity:</span>
+        <input 
+          type="number" 
+          id={`qty-edit-${id}`}
+          defaultValue={currentQty} 
+          className="border p-2 rounded-lg text-sm outline-none focus:border-blue-500 w-full font-bold text-center"
+          min="0"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              document.getElementById(`save-btn-${id}`).click();
+            }
+          }}
+        />
+        <div className="flex gap-2 justify-end mt-1">
+          <button 
+            onClick={() => toast.dismiss(t.id)} 
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            id={`save-btn-${id}`}
+            onClick={async () => {
+              const val = document.getElementById(`qty-edit-${id}`).value;
+              const parsed = parseInt(val);
+              toast.dismiss(t.id);
+              if (!isNaN(parsed) && parsed >= 0) {
+                if (parsed === 0) {
+                  await supabase.from('legacy_stock_counts').delete().eq('id', id);
+                  toast.success("Item removed");
+                } else {
+                  await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
+                  toast.success("Quantity updated");
+                }
+                fetchStoreSeasonCounts();
+              } else {
+                toast.error("Invalid quantity");
+              }
+            }} 
+            className="px-4 py-2 bg-[#004aad] hover:bg-blue-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-md transition-colors"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: Infinity,
+      position: 'top-center',
+      style: { minWidth: '250px' }
+    });
   };
 
   const uniquePalletsInSeason = ['All', ...new Set(sessionList.map(item => item.pallet_number))].sort((a, b) => a - b);

@@ -16,6 +16,8 @@
     "html5-qrcode": "^2.3.8",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.18.3",
     "react-to-print": "^3.3.0"
   },
   "devDependencies": {
