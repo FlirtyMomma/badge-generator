@@ -9,19 +9,19 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icon-512.svg'],
+      includeAssets: ['favicon.ico', 'icon.png'],
       manifest: {
-        name: 'OneBeyond Vault',
-        short_name: 'OB Vault',
+        name: 'OB Hub',
+        short_name: 'OB Hub',
         description: 'Scalable Enterprise Stock Audit',
         theme_color: '#004aad',
         background_color: '#ffffff',
         display: 'standalone',
         icons: [
           {
-            src: 'icon-512.svg',
+            src: 'icon.png',
             sizes: '192x192 512x512',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any maskable'
           }
         ]
