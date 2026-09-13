@@ -8,6 +8,7 @@ import PrintManifest from './components/PrintManifest';
 import SavedBatchList from './components/SavedBatchList';
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
 import StaffSelectorModal from './components/StaffSelectorModal';
+import { getQueueCount, processSyncQueue } from './lib/offlineSync';
 
 // Lazy load heavy components
 const BadgeBuilder = lazy(() => import('./components/BadgeBuilder'));
@@ -55,6 +56,7 @@ function App() {
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [pendingSyncs, setPendingSyncs] = useState(getQueueCount());
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -63,15 +65,30 @@ function App() {
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      processSyncQueue(supabase);
+    };
     const handleOffline = () => setIsOffline(true);
+    
+    const handleSyncUpdated = () => {
+      setPendingSyncs(getQueueCount());
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('offline_sync_updated', handleSyncUpdated);
+    
+    // Initial check
+    if (navigator.onLine && getQueueCount() > 0) {
+      processSyncQueue(supabase);
+    }
     
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('offline_sync_updated', handleSyncUpdated);
     };
   }, []);
 
@@ -261,8 +278,9 @@ function App() {
       {session && storeId && (
         <div className="w-full max-w-7xl flex justify-between mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
           <div className="flex items-center gap-2">
-            <span>🔒 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
+            <span>🔌 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
             {isOffline && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider animate-pulse shadow-sm">⚠️ Offline</span>}
+            {pendingSyncs > 0 && <span className="bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider shadow-sm flex items-center gap-1">🔄 {pendingSyncs} Waiting to Sync</span>}
           </div>
           <div className="flex items-center gap-4">
             {activeStaff && (

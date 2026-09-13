@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../supabaseClient';
+import { safeSupabaseExecute } from '../lib/offlineSync';
 
 const STORE_SIZES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
@@ -152,15 +153,14 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
         const trackingCode = matchedItem.product_code || cleanBarcode;
         if (storeId && !scannedBarcodes.includes(trackingCode)) {
           setScannedBarcodes(prev => [...prev, trackingCode]);
-          supabase.from('store_season_scans').insert([{ 
+          safeSupabaseExecute(supabase, 'store_season_scans', 'INSERT', { 
             store_id: storeId, 
             season: season, 
             barcode: trackingCode,
             staff_name: activeStaff?.name || 'Unknown' 
-          }])
-            .then(({error: insertErr}) => {
-              if(insertErr) console.error("Failed to log scan:", insertErr);
-            });
+          }).then(({error: insertErr}) => {
+            if(insertErr) console.error("Failed to log scan:", insertErr);
+          });
         }
       } else {
         playErrorBeep();
@@ -186,15 +186,16 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
         <p className="text-[10px] text-gray-500">This will wipe all your store's scans for this season.</p>
         <div className="flex gap-2 justify-center mt-2">
           <button onClick={() => toast.dismiss(t.id)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-xs font-bold uppercase">Cancel</button>
-          <button 
-            onClick={async () => {
-              toast.dismiss(t.id);
-              const { error } = await supabase.from('store_season_scans').delete().eq('store_id', storeId).eq('season', season);
-              if (!error) {
-                toast.success("Progress reset.");
-                fetchProgress();
-              }
-            }} 
+          <button              onClick={async () => {
+                toast.dismiss(t.id);
+                const { error, queued } = await safeSupabaseExecute(supabase, 'store_season_scans', 'DELETE', {
+                  match: { store_id: storeId, season: season }
+                });
+                if (!error) {
+                  toast.success(queued ? "Reset queued for when online" : "Progress reset.");
+                  fetchProgress();
+                }
+              }} 
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold uppercase shadow-md"
           >Reset</button>
         </div>

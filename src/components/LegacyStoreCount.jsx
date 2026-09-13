@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../supabaseClient';
 import { toast } from 'react-hot-toast';
+import { safeSupabaseExecute } from '../lib/offlineSync';
 
 export default function LegacyStoreCount({ 
   mode, 
@@ -242,55 +243,66 @@ export default function LegacyStoreCount({
     setIsSubmitting(true);
     const cleanPallet = pallet.trim();
 
-    const { data: existingRecords, error: checkError } = await supabase
-      .from('legacy_stock_counts')
-      .select('id, quantity')
-      .eq('user_id', session.user.id)
-      .eq('season_type', season)
-      .eq('pallet_number', cleanPallet)
-      .eq('staff_name', activeStaff?.name || 'Unknown')
-      .eq('barcode', scannedProduct.barcode);
+    let existingRecords = [];
+    let isOffline = !navigator.onLine;
+    
+    if (!isOffline) {
+      const { data, error: checkError } = await supabase
+        .from('legacy_stock_counts')
+        .select('id, quantity')
+        .eq('user_id', session.user.id)
+        .eq('season_type', season)
+        .eq('pallet_number', cleanPallet)
+        .eq('staff_name', activeStaff?.name || 'Unknown')
+        .eq('barcode', scannedProduct.barcode);
 
-    if (checkError) {
-      toast.error("Database lookup error.");
-      setIsSubmitting(false);
-      return;
+      if (checkError && (checkError.message.includes('fetch') || checkError.message.includes('Network'))) {
+        isOffline = true;
+      } else if (checkError) {
+        toast.error("Database lookup error.");
+        setIsSubmitting(false);
+        return;
+      } else {
+        existingRecords = data || [];
+      }
     }
 
     let saveError = null;
+    let isQueued = false;
 
     if (existingRecords && existingRecords.length > 0) {
       const existingItem = existingRecords[0];
       const combinedQuantity = existingItem.quantity + targetQuantity;
 
-      const { error } = await supabase
-        .from('legacy_stock_counts')
-        .update({ quantity: combinedQuantity })
-        .eq('id', existingItem.id);
-      
+      const { error, queued } = await safeSupabaseExecute(supabase, 'legacy_stock_counts', 'UPDATE', {
+        update: { quantity: combinedQuantity },
+        match: { id: existingItem.id }
+      });
       saveError = error;
+      isQueued = queued;
     } else {
       const newRecord = {
         user_id: session.user.id,
-        staff_name: activeStaff?.name || 'Unknown',
         season_type: season,
         pallet_number: cleanPallet,
         barcode: scannedProduct.barcode,
         product_name: scannedProduct.name,
+        staff_name: activeStaff?.name || 'Unknown',
         quantity: targetQuantity
       };
 
-      const { error } = await supabase.from('legacy_stock_counts').insert([newRecord]);
+      const { error, queued } = await safeSupabaseExecute(supabase, 'legacy_stock_counts', 'INSERT', newRecord);
       saveError = error;
+      isQueued = queued;
     }
 
     if (!saveError) {
-      toast.success("Item saved");
-      setScannedProduct(null);
+      toast.success(isQueued ? "Scan saved to offline queue" : "Item saved");
       setQuantity('1');
-      setUiPaused(false);
+      setUiPaused(false); 
+      setScannedProduct(null); 
     } else {
-      toast.error("Database error saving item.");
+      toast.error("Save failed.");
     }
     setIsSubmitting(false);
   };
@@ -326,23 +338,31 @@ export default function LegacyStoreCount({
           </button>
           <button 
             id={`save-btn-${id}`}
-            onClick={async () => {
-              const val = document.getElementById(`qty-edit-${id}`).value;
-              const parsed = parseInt(val);
-              toast.dismiss(t.id);
-              if (!isNaN(parsed) && parsed >= 0) {
-                if (parsed === 0) {
-                  await supabase.from('legacy_stock_counts').delete().eq('id', id);
-                  toast.success("Item removed");
+              onClick={async () => {
+                const val = document.getElementById(`qty-edit-${id}`).value;
+                const parsed = parseInt(val);
+                toast.dismiss(t.id);
+                if (!isNaN(parsed) && parsed >= 0) {
+                  let queuedStatus = false;
+                  if (parsed === 0) {
+                    const { queued } = await safeSupabaseExecute(supabase, 'legacy_stock_counts', 'DELETE', {
+                      match: { id: id }
+                    });
+                    queuedStatus = queued;
+                    toast.success(queued ? "Removal queued offline" : "Item removed");
+                  } else {
+                    const { queued } = await safeSupabaseExecute(supabase, 'legacy_stock_counts', 'UPDATE', {
+                      update: { quantity: parsed },
+                      match: { id: id }
+                    });
+                    queuedStatus = queued;
+                    toast.success(queued ? "Update queued offline" : "Quantity updated");
+                  }
+                  if (!queuedStatus) fetchStoreSeasonCounts();
                 } else {
-                  await supabase.from('legacy_stock_counts').update({ quantity: parsed }).eq('id', id);
-                  toast.success("Quantity updated");
+                  toast.error("Invalid quantity");
                 }
-                fetchStoreSeasonCounts();
-              } else {
-                toast.error("Invalid quantity");
-              }
-            }} 
+              }} 
             className="px-4 py-2 bg-[#004aad] hover:bg-blue-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-md transition-colors"
           >
             Save
