@@ -6,8 +6,10 @@ import { supabase } from '../supabaseClient';
 const STORE_SIZES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-export default function BayFinder({ storeId }) {
-  const [storeSize, setStoreSize] = useState(() => localStorage.getItem('onebeyond_store_size') || 'A');
+export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', activeStaff }) {
+  const [localStoreSize, setLocalStoreSize] = useState(() => localStorage.getItem('onebeyond_store_size') || 'A');
+  const activeStoreSize = storeId ? adminStoreSize : localStoreSize;
+
   const [season, setSeason] = useState(() => localStorage.getItem('onebeyond_bayfinder_season') || SEASONS[0]);
   const [manualBarcode, setManualBarcode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
@@ -23,12 +25,12 @@ export default function BayFinder({ storeId }) {
   const html5QrcodeRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem('onebeyond_store_size', storeSize);
+    if (!storeId) localStorage.setItem('onebeyond_store_size', activeStoreSize);
     localStorage.setItem('onebeyond_bayfinder_season', season);
     if (storeId) {
       fetchProgress();
     }
-  }, [storeSize, season, storeId]);
+  }, [activeStoreSize, season, storeId]);
 
   const fetchProgress = async () => {
     if (!storeId) return;
@@ -41,7 +43,7 @@ export default function BayFinder({ storeId }) {
       .eq('season', season);
       
     if (!pError) {
-      const validExpected = (planogramData || []).filter(item => item.store_sizes.includes(storeSize));
+      const validExpected = (planogramData || []).filter(item => item.store_sizes.includes(activeStoreSize));
       setExpectedItems(validExpected);
     }
 
@@ -136,7 +138,7 @@ export default function BayFinder({ storeId }) {
         return;
       }
 
-      const matchedItem = seasonItems.find(item => item.store_sizes.includes(storeSize));
+      const matchedItem = seasonItems.find(item => item.store_sizes.includes(activeStoreSize));
 
       if (matchedItem) {
         setBayResult({
@@ -150,7 +152,12 @@ export default function BayFinder({ storeId }) {
         const trackingCode = matchedItem.product_code || cleanBarcode;
         if (storeId && !scannedBarcodes.includes(trackingCode)) {
           setScannedBarcodes(prev => [...prev, trackingCode]);
-          supabase.from('store_season_scans').insert([{ store_id: storeId, season: season, barcode: trackingCode }])
+          supabase.from('store_season_scans').insert([{ 
+            store_id: storeId, 
+            season: season, 
+            barcode: trackingCode,
+            staff_name: activeStaff?.name || 'Unknown' 
+          }])
             .then(({error: insertErr}) => {
               if(insertErr) console.error("Failed to log scan:", insertErr);
             });
@@ -201,18 +208,34 @@ export default function BayFinder({ storeId }) {
     try {
       if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("bay-reader");
       if (html5QrcodeRef.current.isScanning) return;
-      await html5QrcodeRef.current.start(
-        { facingMode: { exact: "environment" } }, 
-        { fps: 15, qrbox: { width: 260, height: 160 } }, 
-        lookupBay, 
-        () => {}
-      );
+
+      const scanConfig = {
+        fps: 20, 
+        qrbox: { width: 260, height: 160 },
+        videoConstraints: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920, min: 1080 },
+          height: { ideal: 1080, min: 720 }
+        }
+      };
+
+      await html5QrcodeRef.current.start({ facingMode: { exact: "environment" } }, scanConfig, lookupBay, () => {});
       setIsScanning(true);
     } catch (err) {
+      console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
       try {
-        await html5QrcodeRef.current.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 260, height: 160 } }, lookupBay, () => {});
+        await html5QrcodeRef.current.start(
+          { facingMode: "environment" },
+          { 
+            fps: 15,
+            disableFlip: false 
+          },
+          lookupBay,
+          () => {}
+        );
         setIsScanning(true);
       } catch (fallbackErr) {
+        console.error("Camera acquisition failure:", fallbackErr);
         setCameraError(true);
       }
     }
@@ -223,7 +246,9 @@ export default function BayFinder({ storeId }) {
       try {
         await html5QrcodeRef.current.stop();
         setIsScanning(false);
-      } catch (err) {}
+      } catch (err) {
+        console.error("Camera failed to stop safely:", err);
+      }
     }
   };
 
@@ -248,8 +273,10 @@ export default function BayFinder({ storeId }) {
     ? Math.round((scannedBarcodes.length / expectedItems.length) * 100) 
     : 0;
 
+  const hasResetPermission = !activeStaff || ['Store Manager', 'Assistant Manager'].includes(activeStaff.position);
+
   return (
-    <div className={`mx-auto ${storeId ? 'max-w-7xl grid grid-cols-1 xl:grid-cols-[450px_1fr] gap-6 items-start' : 'max-w-lg space-y-4'}`}>
+    <div className={`mx-auto w-full ${storeId ? 'grid grid-cols-1 xl:grid-cols-[352px_1fr] gap-6 items-start' : 'max-w-sm space-y-4'}`}>
       
       {/* SCANNER SIDE */}
       <div className="space-y-4">
@@ -268,16 +295,18 @@ export default function BayFinder({ storeId }) {
                 {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Store Tier</label>
-              <select 
-                value={storeSize} 
-                onChange={(e) => setStoreSize(e.target.value)} 
-                className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-800 outline-none focus:border-[#004aad]"
-              >
-                {STORE_SIZES.map(s => <option key={s} value={s}>Tier {s}</option>)}
-              </select>
-            </div>
+            {!storeId && (
+              <div>
+                <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Store Tier</label>
+                <select 
+                  value={activeStoreSize} 
+                  onChange={(e) => setLocalStoreSize(e.target.value)} 
+                  className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-800 outline-none focus:border-[#004aad]"
+                >
+                  {STORE_SIZES.map(s => <option key={s} value={s}>Tier {s}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -369,7 +398,7 @@ export default function BayFinder({ storeId }) {
             {bayResult.type === 'wrong_size' && (
               <>
                 <h3 className="text-sm font-black uppercase mb-2 text-gray-800">{bayResult.productName || 'Unnamed Item'}</h3>
-                <p className="text-xl font-black text-orange-600 mb-2">NOT FOR TIER {storeSize}</p>
+                <p className="text-xl font-black text-orange-600 mb-2">NOT FOR TIER {activeStoreSize}</p>
                 <p className="text-xs font-bold text-gray-600">
                   This item is only part of the planogram for: <br/>
                   <span className="text-orange-800">Tier {bayResult.validSizes.join(', ')} Stores</span>
@@ -395,14 +424,16 @@ export default function BayFinder({ storeId }) {
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Setup Progress</h3>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">{season} • Tier {storeSize}</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">{season} • Tier {activeStoreSize}</p>
               </div>
-              <button 
-                onClick={confirmReset}
-                className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors"
-              >
-                Reset Progress
-              </button>
+                {hasResetPermission && (
+                  <button 
+                    onClick={confirmReset}
+                    className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors"
+                  >
+                    Reset Progress
+                  </button>
+                )}
             </div>
             
             <div>

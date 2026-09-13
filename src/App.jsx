@@ -7,6 +7,7 @@ import BarcodeLightbox from './components/BarcodeLightbox';
 import PrintManifest from './components/PrintManifest';
 import SavedBatchList from './components/SavedBatchList';
 import AdminLegacyDashboard from './components/AdminLegacyDashboard';
+import StaffSelectorModal from './components/StaffSelectorModal';
 
 // Lazy load heavy components
 const BadgeBuilder = lazy(() => import('./components/BadgeBuilder'));
@@ -17,6 +18,7 @@ const StoreStockTakeList = lazy(() => import('./components/StoreStockTakeList'))
 const TransferHistory = lazy(() => import('./components/TransferHistory'));
 const BayFinder = lazy(() => import('./components/BayFinder'));
 const AdminPlanogramManager = lazy(() => import('./components/AdminPlanogramManager'));
+const SeasonPrep = lazy(() => import('./components/SeasonPrep'));
 
 function App() {
   const navigate = useNavigate();
@@ -31,24 +33,32 @@ function App() {
   const [session, setSession] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [storeId, setStoreId] = useState('');
+  const [storeSize, setStoreSize] = useState('A');
+  const [activeStaff, setActiveStaff] = useState(null);
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const [activePrintSeason, setActivePrintSeason] = useState('Mothers Day');
   const [activePrintPallet, setActivePrintPallet] = useState('All');
 
-  const [staff, setStaff] = useState(() => {
-    const saved = localStorage.getItem('onebeyond_staff_list');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [staff, setStaff] = useState([]);
   const [form, setForm] = useState({ name: '', position: '', code: '' });
   const [editingId, setEditingId] = useState(null);
-
-  useEffect(() => {
-    localStorage.setItem('onebeyond_staff_list', JSON.stringify(staff));
-  }, [staff]);
 
   const [savedProducts, setSavedProducts] = useState(() => {
     return JSON.parse(localStorage.getItem('onebeyond_saved_products')) || [];
@@ -64,6 +74,9 @@ function App() {
     }
     setSession(null);
     setStoreId('');
+    setStoreSize('A');
+    setActiveStaff(null);
+    setStaff([]);
     setIsSystemAdmin(false);
     setEmailInput('');
     setPasswordInput('');
@@ -74,31 +87,22 @@ function App() {
   useEffect(() => {
     if (!session) return; 
     let timeoutId;
-    const INACTIVITY_LIMIT = 15 * 60 * 1000; 
-
-    const resetTimeout = () => {
-      if (timeoutId) clearTimeout(timeoutId);
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         handleLogoutStore();
-        toast.error("Security Alert: Your store session has timed out due to inactivity. Please sign in again.");
-      }, INACTIVITY_LIMIT);
+      }, 10 * 60 * 1000); 
     };
 
-    window.addEventListener('mousedown', resetTimeout);
-    window.addEventListener('mousemove', resetTimeout);
-    window.addEventListener('keypress', resetTimeout);
-    window.addEventListener('scroll', resetTimeout);
-
-    resetTimeout();
+    const events = ['mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => document.addEventListener(event, resetTimer));
+    resetTimer();
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      window.removeEventListener('mousedown', resetTimeout);
-      window.removeEventListener('mousemove', resetTimeout);
-      window.removeEventListener('keypress', resetTimeout);
-      window.removeEventListener('scroll', resetTimeout);
+      clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, resetTimer));
     };
-  }, [session, navigate]);
+  }, [session]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
@@ -113,6 +117,7 @@ function App() {
         fetchStoreProfile(currentSession.user.id);
       } else {
         setStoreId('');
+        setStoreSize('A');
         setIsSystemAdmin(false);
       }
       setIsAuthLoading(false);
@@ -122,11 +127,16 @@ function App() {
   }, []);
 
   const fetchStoreProfile = async (userId) => {
-    const { data } = await supabase.from('store_profiles').select('store_id, is_admin').eq('id', userId).single();
+    const { data } = await supabase.from('store_profiles').select('store_id, is_admin, store_size').eq('id', userId).single();
     if (data) {
       setStoreId(data.store_id);
       setIsSystemAdmin(!!data.is_admin);
+      if (data.store_size) setStoreSize(data.store_size);
     }
+    
+    // Fetch Staff Badges
+    const { data: staffData } = await supabase.from('store_staff').select('*').eq('user_id', userId).order('created_at', { ascending: true });
+    if (staffData) setStaff(staffData);
   };
 
   const handleStoreLogin = async (e) => {
@@ -188,7 +198,7 @@ function App() {
     }
   };
 
-  const isDataDenseView = ['/admin', '/admin/planograms', '/stock-take', '/history', '/bay-finder'].includes(location.pathname);
+  const isDataDenseView = ['/admin', '/admin/planograms', '/stock-take', '/history', '/bay-finder', '/season-prep'].includes(location.pathname);
 
   if (isAuthLoading) {
     return <div className="min-h-screen bg-gray-100 flex items-center justify-center font-bold text-gray-400">Loading Terminal...</div>;
@@ -198,10 +208,25 @@ function App() {
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 flex flex-col items-center justify-start">
       <Toaster position="top-center" />
       
+      {session && !isSystemAdmin && !activeStaff && (
+        <StaffSelectorModal staffList={staff} onSelectStaff={setActiveStaff} />
+      )}
+      
       {session && storeId && (
-        <div className="w-full max-w-7xl flex justify-end mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
-          <span>🏪 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
-          <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
+        <div className="w-full max-w-7xl flex justify-between mb-2 text-[11px] text-gray-500 px-2 font-bold items-center gap-2 no-print">
+          <div className="flex items-center gap-2">
+            <span>🔒 Connected: <strong>{storeId}</strong> {isSystemAdmin && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">Admin Mode</span>}</span>
+            {isOffline && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider animate-pulse shadow-sm">⚠️ Offline</span>}
+          </div>
+          <div className="flex items-center gap-4">
+            {activeStaff && (
+              <button onClick={() => setActiveStaff(null)} className="text-[#004aad] hover:underline flex gap-1 items-center">
+                <span>👤 {activeStaff.name}</span>
+                <span className="text-[9px] uppercase">(Switch)</span>
+              </button>
+            )}
+            <button onClick={handleManualLogoutClick} className="text-red-600 underline hover:text-red-800">Log Out</button>
+          </div>
         </div>
       )}
 
@@ -243,6 +268,8 @@ function App() {
               <Route path="/badges" element={
                 session ? (
                   <BadgeBuilder 
+                    session={session}
+                    activeStaff={activeStaff}
                     contentRef={contentRef} 
                     layoutMode="leftColumn" 
                     staff={staff} 
@@ -272,6 +299,7 @@ function App() {
                 session ? (
                   <LegacyStoreCount 
                     session={session} 
+                    activeStaff={activeStaff}
                     lookUpProduct={lookUpProduct} 
                     scannedProduct={scannedProduct} 
                     setScannedProduct={setScannedProduct} 
@@ -293,7 +321,10 @@ function App() {
                 session ? <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} /> : <Navigate to="/login" />
               } />
               
-              <Route path="/bay-finder" element={<BayFinder storeId={storeId} />} />
+              <Route path="/bay-finder" element={<BayFinder storeId={storeId} storeSize={storeSize} activeStaff={activeStaff} />} />
+              <Route path="/season-prep" element={
+                session ? <SeasonPrep session={session} storeSize={storeSize} /> : <Navigate to="/login" />
+              } />
               <Route path="/admin/planograms" element={
                 session && isSystemAdmin ? <AdminPlanogramManager /> : <Navigate to="/" />
               } />
@@ -309,6 +340,8 @@ function App() {
                 <Route path="/badges" element={
                   session ? (
                     <BadgeBuilder 
+                      session={session}
+                      activeStaff={activeStaff}
                       contentRef={contentRef} 
                       layoutMode="rightColumn" 
                       staff={staff} 

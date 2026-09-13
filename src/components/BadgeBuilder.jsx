@@ -1,7 +1,10 @@
 import { useReactToPrint } from 'react-to-print';
 import Badge from './Badge';
+import { supabase } from '../supabaseClient';
 
 export default function BadgeBuilder({ 
+  session,
+  activeStaff,
   contentRef, 
   layoutMode = "leftColumn",
   staff,
@@ -17,17 +20,48 @@ export default function BadgeBuilder({
     documentTitle: "OneBeyond_Staff_Badges_Sheet",
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.code) return;
+    if (!form.name || !form.code || !session?.user?.id) return;
 
     if (editingId) {
-      setStaff(staff.map(s => s.id === editingId ? { ...form, id: editingId } : s));
-      setEditingId(null);
+      const { error } = await supabase.from('store_staff').update({
+        name: form.name,
+        position: form.position || 'Sales Assistant',
+        code: form.code
+      }).eq('id', editingId);
+      
+      if (!error) {
+        setStaff(staff.map(s => s.id === editingId ? { ...s, ...form } : s));
+        setEditingId(null);
+      } else {
+        alert('Failed to update badge.');
+      }
     } else {
-      setStaff([...staff, { ...form, id: Date.now() }]);
+      const newBadge = {
+        user_id: session.user.id,
+        name: form.name,
+        position: form.position || 'Sales Assistant',
+        code: form.code
+      };
+      const { data, error } = await supabase.from('store_staff').insert([newBadge]).select().single();
+      
+      if (data && !error) {
+        setStaff([...staff, data]);
+      } else {
+        alert('Failed to save badge.');
+      }
     }
-    setForm({ name: '', position: '', code: '' });
+    setForm({ name: '', position: 'Sales Assistant', code: '' });
+  };
+
+  const handleDelete = async (id) => {
+    const { error } = await supabase.from('store_staff').delete().eq('id', id);
+    if (!error) {
+      setStaff(staff.filter(s => s.id !== id));
+    } else {
+      alert('Failed to delete badge.');
+    }
   };
 
   const startEdit = (person) => {
@@ -36,13 +70,37 @@ export default function BadgeBuilder({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const hasPermission = !activeStaff || ['Store Manager', 'Assistant Manager'].includes(activeStaff.position);
+
+  if (!hasPermission && layoutMode === "leftColumn") {
+    return (
+      <div className="bg-red-50 text-red-600 p-8 rounded-xl text-center shadow-sm border border-red-200">
+        <h2 className="text-xl font-black uppercase tracking-wider mb-2">Access Denied</h2>
+        <p className="font-bold text-sm">Only Managers and Assistant Managers can create or modify staff badges.</p>
+      </div>
+    );
+  }
+
+  if (!hasPermission && layoutMode === "rightColumn") {
+    return null;
+  }
+
   // --- RENDER PORTION A: Control Column Actions ---
   if (layoutMode === "leftColumn") {
     return (
       <div className="space-y-6">
         <form onSubmit={handleSubmit} className="space-y-3">
           <input className="w-full border p-3 rounded-lg text-sm outline-none focus:border-blue-500" placeholder="Staff Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
-          <input className="w-full border p-3 rounded-lg text-sm outline-none focus:border-blue-500" placeholder="Position (e.g. Store Manager)" value={form.position} onChange={e => setForm({...form, position: e.target.value})} />
+          <select 
+            className="w-full border p-3 rounded-lg text-sm font-bold text-gray-700 outline-none focus:border-[#004aad] bg-white"
+            value={form.position || 'Sales Assistant'}
+            onChange={e => setForm({...form, position: e.target.value})}
+          >
+            <option value="Store Manager">Store Manager</option>
+            <option value="Assistant Manager">Assistant Manager</option>
+            <option value="Supervisor">Supervisor</option>
+            <option value="Sales Assistant">Sales Assistant</option>
+          </select>
           <input className="w-full border p-3 rounded-lg text-sm font-mono outline-none focus:border-blue-500" placeholder="Till Access Code" value={form.code} onChange={e => setForm({...form, code: e.target.value})} />
           <button type="submit" className={`w-full text-white py-3 rounded-lg font-bold shadow-md transition-all ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#004aad] hover:bg-blue-800'}`}>
             {editingId ? 'Update Badge Configuration' : 'Add to Printable Sheet'}
@@ -78,7 +136,7 @@ export default function BadgeBuilder({
                   <Badge {...person} />
                   <div className="absolute top-2 right-2 flex gap-2">
                      <button onClick={() => startEdit(person)} className="bg-orange-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">✎</button>
-                     <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">✕</button>
+                     <button onClick={() => handleDelete(person.id)} className="bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">🗑</button>
                   </div>
                 </div>
               ))}
@@ -103,7 +161,7 @@ export default function BadgeBuilder({
               <Badge {...person} />
               <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                  <button onClick={() => startEdit(person)} className="bg-orange-500 hover:bg-orange-600 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center font-bold">✎</button>
-                 <button onClick={() => setStaff(staff.filter(s => s.id !== person.id))} className="bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center font-bold">✕</button>
+                 <button onClick={() => handleDelete(person.id)} className="bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center font-bold">🗑</button>
               </div>
             </div>
           ))}

@@ -33,6 +33,12 @@ export default function Navigation({ isSystemAdmin, session, storeId }) {
       {session && (
         <>
           <Link 
+            to="/season-prep" 
+            className={`${baseBtn} ${currentPath === '/season-prep' ? activeClass : inactiveClass}`}
+          >
+            Season Prep
+          </Link>
+          <Link 
             to="/badges" 
             className={`${baseBtn} ${currentPath === '/badges' ? activeClass : inactiveClass}`}
           >

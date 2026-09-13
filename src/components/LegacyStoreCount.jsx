@@ -5,8 +5,9 @@ import { toast } from 'react-hot-toast';
 
 export default function LegacyStoreCount({ 
   mode, 
-  session, 
-  lookUpProduct, 
+  session,
+  activeStaff, 
+  lookUpProduct,  
   scannedProduct, 
   setScannedProduct,
   setActivePrintSeason,
@@ -19,6 +20,7 @@ export default function LegacyStoreCount({
   
   const [isScanning, setIsScanning] = useState(false);
   const [uiPaused, setUiPaused] = useState(false);
+  const [cameraError, setCameraError] = useState(false);
   const html5QrcodeRef = useRef(null);
 
   const [sessionList, setSessionList] = useState([]);
@@ -90,7 +92,7 @@ export default function LegacyStoreCount({
 
     const { data: countsData, error: countsError } = await supabase
       .from('legacy_stock_counts')
-      .select('id, created_at, pallet_number, barcode, product_name, quantity')
+      .select('id, created_at, pallet_number, barcode, product_name, quantity, staff_name')
       .eq('user_id', session.user.id)
       .eq('season_type', viewSeason)
       .order('created_at', { ascending: false });
@@ -162,50 +164,61 @@ export default function LegacyStoreCount({
     if (session) localStorage.setItem(`onebeyond_last_pallet_${session.user.id}`, pallet);
   }, [pallet, session]);
 
-  const qrboxFunction = (viewfinderWidth, viewfinderHeight) => {
-    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-    const boxWidth = Math.floor(viewfinderWidth * 0.75);
-    const boxHeight = Math.floor(minEdge * 0.35); 
-    
-    return {
-      width: boxWidth < 250 ? 250 : boxWidth,
-      height: boxHeight < 120 ? 120 : boxHeight
-    };
-  };
-
   const startCamera = async () => {
+    setCameraError(false); 
     try {
       if (!html5QrcodeRef.current) html5QrcodeRef.current = new Html5Qrcode("legacy-reader");
       if (html5QrcodeRef.current.isScanning) return;
 
-      await html5QrcodeRef.current.start(
-        { facingMode: "environment" },
-        {
-          fps: 20,
-          qrbox: qrboxFunction,
-          rememberLastUsedCamera: true,
-          supportedScanTypes: [0]
-        },
-        (text) => {
-          stopCamera();
-          setUiPaused(true);
-          lookUpProduct(text);
-        },
-        () => {}
-      );
+      const scanConfig = {
+        fps: 20, 
+        qrbox: { width: 260, height: 160 },
+        videoConstraints: {
+          facingMode: { exact: "environment" },
+          width: { ideal: 1920, min: 1080 },
+          height: { ideal: 1080, min: 720 }
+        }
+      };
+
+      const onScanSuccess = (text) => {
+        stopCamera();
+        setUiPaused(true);
+        lookUpProduct(text);
+      };
+
+      await html5QrcodeRef.current.start({ facingMode: { exact: "environment" } }, scanConfig, onScanSuccess, () => {});
       setIsScanning(true);
     } catch (err) {
-      console.error(err);
+      console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
+      try {
+        await html5QrcodeRef.current.start(
+          { facingMode: "environment" },
+          { 
+            fps: 15,
+            disableFlip: false 
+          },
+          (text) => {
+            stopCamera();
+            setUiPaused(true);
+            lookUpProduct(text);
+          },
+          () => {}
+        );
+        setIsScanning(true);
+      } catch (fallbackErr) {
+        console.error("Camera acquisition failure:", fallbackErr);
+        setCameraError(true);
+      }
     }
   };
 
   const stopCamera = async () => {
-    if (html5QrcodeRef.current && isScanning) {
+    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
       try {
         await html5QrcodeRef.current.stop();
         setIsScanning(false);
       } catch (err) {
-        console.error("Legacy camera failed to stop safely:", err);
+        console.error("Camera failed to stop safely:", err);
       }
     }
   };
@@ -235,6 +248,7 @@ export default function LegacyStoreCount({
       .eq('user_id', session.user.id)
       .eq('season_type', season)
       .eq('pallet_number', cleanPallet)
+      .eq('staff_name', activeStaff?.name || 'Unknown')
       .eq('barcode', scannedProduct.barcode);
 
     if (checkError) {
@@ -258,6 +272,7 @@ export default function LegacyStoreCount({
     } else {
       const newRecord = {
         user_id: session.user.id,
+        staff_name: activeStaff?.name || 'Unknown',
         season_type: season,
         pallet_number: cleanPallet,
         barcode: scannedProduct.barcode,
@@ -367,33 +382,40 @@ export default function LegacyStoreCount({
         </div>
       </div>
 
-      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner no-print">
-        <div id="legacy-reader" className="w-full"></div>
+      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner min-h-[250px] flex items-center justify-center no-print">
+        <div id="legacy-reader" className="w-full absolute inset-0"></div>
         
         {isScanning && !uiPaused && (
-          <div className="absolute inset-0 pointer-events-none flex flex-col justify-between items-center z-10">
-            <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
-            <div className="w-3/4 aspect-[2.5/1] min-h-[120px] max-w-sm border-2 border-dashed border-blue-400 relative rounded flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-              <div className="w-full h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div>
-              <span className="absolute bottom-1 text-[8px] font-black text-blue-400 uppercase tracking-widest bg-black/70 px-1 rounded">Align Barcode Here</span>
-            </div>
-            <div className="w-full flex-grow bg-black/50 backdrop-blur-[1px]"></div>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+            <button onClick={stopCamera} className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide uppercase shadow-md">
+              🛑 Stop Scanning
+            </button>
+          </div>
+        )}
+        
+        {uiPaused && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-xs z-20">
+            <button onClick={() => { setScannedProduct(null); setUiPaused(false); }} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl tracking-wider hover:bg-blue-800 transition-all border border-white/20">
+              📷 Scan Next Item
+            </button>
           </div>
         )}
 
-        {isScanning && !uiPaused && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20">
-            <button onClick={stopCamera} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase shadow-md">🛑 Stop Scanning</button>
+        {cameraError && !uiPaused && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
+            <p className="text-red-400 font-bold text-[11px] uppercase tracking-wider mb-2">📸 Camera Not Detected</p>
+            <p className="text-gray-500 text-[10px] mb-3">Please use the manual entry field below.</p>
+            <button onClick={startCamera} className="bg-gray-800 text-gray-300 px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase hover:bg-gray-700 transition-colors">
+              Retry Camera
+            </button>
           </div>
         )}
-        {uiPaused && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-xl z-20">
-            <button onClick={() => { setScannedProduct(null); setUiPaused(false); }} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-xl">📷 Scan Next Item</button>
-          </div>
-        )}
-        {!isScanning && !uiPaused && (
+
+        {!isScanning && !uiPaused && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 rounded-xl z-20 p-4 text-center">
-            <button onClick={startCamera} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-md">🎥 Start Scanner</button>
+            <button onClick={startCamera} className="bg-[#004aad] text-white px-6 py-3 rounded-xl font-black uppercase text-sm shadow-md hover:bg-blue-800">
+              🎥 Start Scanner
+            </button>
           </div>
         )}
       </div>
@@ -539,10 +561,11 @@ export default function LegacyStoreCount({
               <div key={item.id} onClick={() => handleUpdateQuantity(item.id, item.quantity)} className="bg-white border border-gray-200 rounded-lg p-2.5 flex justify-between items-center shadow-xs cursor-pointer hover:bg-orange-50 hover:border-orange-200 group transition-colors">
                 <div className="min-w-0 pr-2">
                   <h4 className="text-xs font-bold text-gray-900 truncate uppercase">{item.product_name}</h4>
-                  <div className="text-[9px] font-mono text-gray-400 mt-0.5 flex gap-3">
+                  <div className="text-[9px] font-mono text-gray-400 mt-0.5 flex gap-3 flex-wrap">
                     <span>PLT: <strong className="text-[#004aad] font-black">{item.pallet_number}</strong></span>
                     <span>BC: {item.barcode}</span>
                     <span>Live Each: <strong className="text-gray-600">{item.livePriceString}</strong></span>
+                    {item.staff_name && <span>By: <strong className="text-orange-600 font-bold">{item.staff_name}</strong></span>}
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">

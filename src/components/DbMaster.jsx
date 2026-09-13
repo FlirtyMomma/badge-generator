@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import AdminNetworkDashboard from './AdminNetworkDashboard';
 
 export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
   const [fileSelected, setFileSelected] = useState(false);
@@ -11,6 +12,32 @@ export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [stores, setStores] = useState([]);
+
+  useEffect(() => {
+    if (isSystemAdmin) fetchStores();
+  }, [isSystemAdmin]);
+
+  const fetchStores = async () => {
+    const { data } = await supabase.from('store_profiles').select('*').order('store_id');
+    if (data) setStores(data);
+  };
+
+  const updateStoreSize = async (id, newSize) => {
+    const { data, error } = await supabase
+      .from('store_profiles')
+      .update({ store_size: newSize })
+      .eq('id', id)
+      .select();
+      
+    if (error) {
+      alert(`Error updating: ${error.message}`);
+    } else if (!data || data.length === 0) {
+      alert("Update blocked by Database Security (RLS). You don't have permission to modify this store's profile.");
+    } else {
+      setStores(prev => prev.map(s => s.id === id ? { ...s, store_size: newSize } : s));
+    }
+  };
 
   if (!isSystemAdmin) {
     return <div className="text-center p-6 text-xs font-bold text-red-500">Access Denied: Unauthorised clearance level.</div>;
@@ -177,6 +204,44 @@ export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
           </button>
         </form>
       </div>
+
+      {/* Sub-Panel 1.5: Manage Stores */}
+      <div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3 shadow-xs max-h-64 overflow-y-auto">
+        <h3 className="text-xs font-black uppercase text-gray-700 tracking-wider">🏢 Manage Stores & Tiers</h3>
+        <table className="w-full text-left text-xs bg-white rounded shadow-sm border">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="p-2 font-bold text-gray-500 uppercase">ID</th>
+              <th className="p-2 font-bold text-gray-500 uppercase">Name</th>
+              <th className="p-2 font-bold text-gray-500 uppercase">Tier Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stores.map(store => (
+              <tr key={store.id} className="border-b last:border-0 hover:bg-gray-50">
+                <td className="p-2 font-bold">{store.store_id}</td>
+                <td className="p-2">{store.store_name}</td>
+                <td className="p-2">
+                  <select 
+                    value={store.store_size || 'A'}
+                    onChange={(e) => updateStoreSize(store.id, e.target.value)}
+                    className="border rounded p-1 font-bold text-[#004aad] outline-none"
+                  >
+                    {['A','B','C','D','E','F','G','H','I'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {stores.length === 0 && (
+              <tr>
+                <td colSpan="3" className="p-4 text-center text-gray-400 font-bold">No stores found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AdminNetworkDashboard />
 
       {/* Sub-Panel 2: Weekly Catalogue File Processor */}
       <div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3 shadow-xs">

@@ -329,7 +329,10 @@ export default function ScanPanel({
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },
-          { fps: 15, qrbox: { width: 260, height: 160 } },
+          { 
+            fps: 15,
+            disableFlip: false 
+          },
           (text) => {
             playSuccessBeep();
             stopCamera();
