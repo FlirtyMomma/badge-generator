@@ -35,15 +35,15 @@ function App() {
   const [storeId, setStoreId] = useState('');
   const [storeSize, setStoreSize] = useState('A');
   const [activeStaff, setActiveStaff] = useState(() => {
-    const saved = localStorage.getItem('ob_active_staff');
+    const saved = sessionStorage.getItem('ob_active_staff');
     return saved ? JSON.parse(saved) : null;
   });
 
   useEffect(() => {
     if (activeStaff) {
-      localStorage.setItem('ob_active_staff', JSON.stringify(activeStaff));
+      sessionStorage.setItem('ob_active_staff', JSON.stringify(activeStaff));
     } else {
-      localStorage.removeItem('ob_active_staff');
+      sessionStorage.removeItem('ob_active_staff');
     }
   }, [activeStaff]);
 
@@ -182,19 +182,22 @@ function App() {
     if (isLoggingIn) return;
     setIsLoggingIn(true);
 
+    if (rememberDevice) {
+      localStorage.setItem('ob_remember_device', 'true');
+    } else {
+      localStorage.removeItem('ob_remember_device');
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput.trim(),
       password: passwordInput,
     });
 
     if (error) {
+      localStorage.removeItem('ob_remember_device');
       toast.error(`Login Failed: ${error.message}`);
     } else if (data?.session) {
-      if (rememberDevice) {
-        localStorage.setItem('ob_remember_device', 'true');
-      } else {
-        localStorage.removeItem('ob_remember_device');
-      }
+      setActiveStaff(null);
       setSession(data.session);
       fetchStoreProfile(data.session.user.id);
       navigate('/legacy'); 
