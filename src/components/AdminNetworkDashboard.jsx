@@ -106,7 +106,34 @@ export default function AdminNetworkDashboard() {
         )}
       </div>
       
-      <div className="pt-2 flex justify-end">
+      <div className="pt-2 flex justify-between items-center">
+        <button 
+          onClick={() => {
+            if (metrics.length === 0) return;
+            const headers = ['Store ID', 'Store Name', 'Tier', 'Season', 'Expected Items', 'Scanned Items', 'Completion (%)'];
+            const rows = metrics.map(store => [
+              store.store_id,
+              `"${store.store_name}"`,
+              store.store_size || 'A',
+              season,
+              store.expected,
+              store.scanned,
+              store.percent
+            ]);
+            const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `OB_Hub_${season.replace(/\s+/g, '_')}_Progress.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }}
+          className="text-[10px] font-bold bg-[#004aad] text-white px-3 py-1.5 rounded shadow-sm hover:bg-blue-800 transition-colors uppercase tracking-wider"
+        >
+          📊 Export CSV
+        </button>
         <button 
           onClick={fetchMetrics}
           className="text-[10px] font-bold bg-white border px-3 py-1.5 rounded shadow-sm hover:bg-gray-50 text-gray-600 transition-colors"
