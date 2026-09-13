@@ -256,12 +256,20 @@ export default function LegacyStoreCount({
         .eq('staff_name', activeStaff?.name || 'Unknown')
         .eq('barcode', scannedProduct.barcode);
 
-      if (checkError && (checkError.message.includes('fetch') || checkError.message.includes('Network'))) {
-        isOffline = true;
-      } else if (checkError) {
-        toast.error("Database lookup error.");
-        setIsSubmitting(false);
-        return;
+      if (checkError) {
+        const errMsg = (checkError.message || '').toLowerCase();
+        if (
+          errMsg.includes('fetch') || 
+          errMsg.includes('network') || 
+          errMsg.includes('timeout') || 
+          errMsg.includes('offline')
+        ) {
+          isOffline = true;
+        } else {
+          toast.error("Database lookup error: " + checkError.message);
+          setIsSubmitting(false);
+          return;
+        }
       } else {
         existingRecords = data || [];
       }

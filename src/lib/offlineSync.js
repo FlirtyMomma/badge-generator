@@ -107,13 +107,25 @@ export const safeSupabaseExecute = async (supabase, table, action, payload) => {
       result = await deleteQuery;
     }
 
-    if (result.error && (result.error.message.includes('fetch') || result.error.message.includes('Failed to fetch') || result.error.message.includes('Network'))) {
-      throw new Error("Network Error");
+    if (result.error) {
+      const errMsg = (result.error.message || '').toLowerCase();
+      const errDetails = (result.error.details || '').toLowerCase();
+      if (
+        errMsg.includes('fetch') || 
+        errMsg.includes('network') || 
+        errMsg.includes('timeout') || 
+        errMsg.includes('offline') || 
+        errMsg.includes('failed to fetch') ||
+        errDetails.includes('fetch') ||
+        !navigator.onLine
+      ) {
+        throw new Error("Network Error detected, queueing...");
+      }
     }
 
     return { ...result, queued: false };
   } catch (err) {
-    // If it's a network error, queue it
+    // If it's a network error or explicitly thrown above, queue it
     console.warn("Network error during execution, falling back to offline queue...", err);
     enqueueSyncTask(table, action, payload);
     return { data: null, error: null, queued: true };
