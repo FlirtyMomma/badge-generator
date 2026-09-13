@@ -212,6 +212,7 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
       const scanConfig = {
         fps: 20, 
         qrbox: { width: 260, height: 160 },
+        aspectRatio: 1.777778,
         videoConstraints: {
           facingMode: { exact: "environment" },
           width: { ideal: 1920, min: 1080 },
@@ -228,7 +229,9 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
           { facingMode: "environment" },
           { 
             fps: 15,
-            disableFlip: false 
+            disableFlip: false,
+            qrbox: { width: 260, height: 160 },
+            aspectRatio: 1.777778
           },
           lookupBay,
           () => {}
@@ -279,7 +282,7 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
     <div className={`mx-auto w-full ${storeId ? 'grid grid-cols-1 xl:grid-cols-[352px_1fr] gap-6 items-start' : 'max-w-sm space-y-4'}`}>
       
       {/* SCANNER SIDE */}
-      <div className="space-y-4">
+      <div className="space-y-4 max-w-md mx-auto w-full">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 text-center space-y-2">
           <h2 className="font-black text-gray-800 uppercase tracking-widest text-sm">Planogram Bay Finder</h2>
           <p className="text-xs text-gray-500">Scan seasonal stock to find its designated bay.</p>

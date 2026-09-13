@@ -56,7 +56,7 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
     try {
       await html5QrcodeRef.current.start(
         { facingMode: { exact: "environment" } },
-        { fps: 20 },
+        { fps: 20, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
         onScanSuccess,
         () => {}
       );
@@ -66,7 +66,7 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },
-          { fps: 15, disableFlip: false },
+          { fps: 15, disableFlip: false, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
           onScanSuccess,
           () => {}
         );

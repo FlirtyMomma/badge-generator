@@ -331,7 +331,9 @@ export default function ScanPanel({
           { facingMode: "environment" },
           { 
             fps: 15,
-            disableFlip: false 
+            disableFlip: false,
+            qrbox: { width: 260, height: 160 },
+            aspectRatio: 1.777778
           },
           (text) => {
             playSuccessBeep();

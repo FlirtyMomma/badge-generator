@@ -34,24 +34,55 @@ function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [storeId, setStoreId] = useState('');
   const [storeSize, setStoreSize] = useState('A');
-  const [activeStaff, setActiveStaff] = useState(null);
+  const [activeStaff, setActiveStaff] = useState(() => {
+    const saved = localStorage.getItem('ob_active_staff');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  useEffect(() => {
+    if (activeStaff) {
+      localStorage.setItem('ob_active_staff', JSON.stringify(activeStaff));
+    } else {
+      localStorage.removeItem('ob_active_staff');
+    }
+  }, [activeStaff]);
+
   const [isSystemAdmin, setIsSystemAdmin] = useState(false); 
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [installPrompt, setInstallPrompt] = useState(null);
 
   useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
     return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   const [activePrintSeason, setActivePrintSeason] = useState('Mothers Day');
   const [activePrintPallet, setActivePrintPallet] = useState('All');
@@ -72,6 +103,7 @@ function App() {
     } catch (err) {
       console.warn("Session already cleared on server:", err);
     }
+    localStorage.removeItem('ob_remember_device');
     setSession(null);
     setStoreId('');
     setStoreSize('A');
@@ -86,6 +118,12 @@ function App() {
 
   useEffect(() => {
     if (!session) return; 
+    
+    // Disable idle timeout if device is remembered
+    if (localStorage.getItem('ob_remember_device') === 'true') {
+      return;
+    }
+
     let timeoutId;
     const resetTimer = () => {
       clearTimeout(timeoutId);
@@ -152,6 +190,11 @@ function App() {
     if (error) {
       toast.error(`Login Failed: ${error.message}`);
     } else if (data?.session) {
+      if (rememberDevice) {
+        localStorage.setItem('ob_remember_device', 'true');
+      } else {
+        localStorage.removeItem('ob_remember_device');
+      }
       setSession(data.session);
       fetchStoreProfile(data.session.user.id);
       navigate('/legacy'); 
@@ -230,6 +273,18 @@ function App() {
         </div>
       )}
 
+      {installPrompt && (
+        <div className="w-full max-w-7xl bg-[#ffcb05] text-[#004aad] px-4 py-3 rounded-xl font-black text-sm uppercase flex justify-between items-center mb-4 shadow-sm border border-yellow-400 no-print">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📱</span>
+            <span>Install OB Hub App</span>
+          </div>
+          <button onClick={handleInstallClick} className="bg-[#004aad] text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-800 transition-colors tracking-wider">
+            Install Now
+          </button>
+        </div>
+      )}
+
       {/* GLOBAL HEADER CARD */}
       <div className="w-full max-w-7xl bg-[#004aad] p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 mb-6 no-print">
         <h1 className="text-2xl font-bold mb-4 text-gray-800 text-center tracking-tight">
@@ -256,11 +311,29 @@ function App() {
             <Routes>
               <Route path="/login" element={
                 !session ? (
-                  <form onSubmit={handleStoreLogin} className="space-y-3 py-4 text-center max-w-sm mx-auto">
-                    <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider">Store Login Authentication</h3>
-                    <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="coalville.155@onebeyond.co.uk" required />
-                    <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800" placeholder="Store Password" required />
-                    <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md">Sign In</button>
+                  <form onSubmit={handleStoreLogin} className="space-y-4 py-4 text-center max-w-sm mx-auto">
+                    <h3 className="text-xs font-black uppercase text-gray-600 tracking-wider mb-2">Store Login Authentication</h3>
+                    <div className="space-y-3">
+                      <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800 focus:border-[#004aad]" placeholder="coalville.155@onebeyond.co.uk" required />
+                      <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full border p-3 rounded-lg text-sm outline-none text-gray-800 focus:border-[#004aad]" placeholder="Store Password" required />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 justify-start py-1">
+                      <input 
+                        type="checkbox" 
+                        id="rememberDevice" 
+                        checked={rememberDevice} 
+                        onChange={(e) => setRememberDevice(e.target.checked)} 
+                        className="w-4 h-4 cursor-pointer accent-[#004aad]"
+                      />
+                      <label htmlFor="rememberDevice" className="text-xs font-bold text-gray-500 cursor-pointer select-none">
+                        Keep this device logged in
+                      </label>
+                    </div>
+
+                    <button type="submit" disabled={isLoggingIn} className="w-full bg-gray-900 hover:bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-wider shadow-md mt-2 disabled:opacity-50 transition-colors">
+                      {isLoggingIn ? 'Authenticating...' : 'Sign In'}
+                    </button>
                   </form>
                 ) : <Navigate to="/" />
               } />
