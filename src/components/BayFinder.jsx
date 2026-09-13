@@ -103,73 +103,82 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
     setUiPaused(true);
 
     try {
-      // Resolve the scanned barcode to its parent product_code
-      const { data: productData } = await supabase
-        .from('store_products')
-        .select('product_code')
-        .eq('barcode', cleanBarcode)
-        .maybeSingle();
+      let items = [];
+      let targetProductCode = cleanBarcode;
+      let isOffline = !navigator.onLine;
 
-      const targetProductCode = productData?.product_code || cleanBarcode;
+      if (!isOffline) {
+        try {
+          const { data: productData, error: productErr } = await supabase
+            .from('store_products')
+            .select('product_code')
+            .eq('barcode', cleanBarcode)
+            .maybeSingle();
+            
+          if (productErr && (productErr.message?.toLowerCase().includes('fetch') || productErr.message?.toLowerCase().includes('network'))) {
+            isOffline = true;
+          } else {
+            targetProductCode = productData?.product_code || cleanBarcode;
 
-      const { data: items, error } = await supabase
-        .from('planogram_items')
-        .select('*')
-        .or(`product_code.eq.${targetProductCode},barcode.eq.${cleanBarcode}`);
+            const { data: fetchItems, error } = await supabase
+              .from('planogram_items')
+              .select('*')
+              .or(`product_code.eq.${targetProductCode},barcode.eq.${cleanBarcode}`);
 
-      if (error) throw error;
+            if (error) {
+              if (error.message?.toLowerCase().includes('fetch') || error.message?.toLowerCase().includes('network')) {
+                isOffline = true;
+              } else {
+                throw error;
+              }
+            } else {
+              items = fetchItems || [];
+            }
+          }
+        } catch (networkErr) {
+          isOffline = true;
+        }
+      }
+
+      if (isOffline) {
+        // Offline Fallback: Search the locally cached expectedItems for this season
+        items = expectedItems.filter(i => i.product_code === cleanBarcode || i.barcode === cleanBarcode);
+      }
 
       if (!items || items.length === 0) {
         playErrorBeep();
-        setBayResult({ type: 'not_found', barcode: cleanBarcode });
+        setBayResult({ type: 'not_found', barcode: cleanBarcode, isOfflineFallback: isOffline });
         return;
       }
 
       const seasonItems = items.filter(i => i.season === season);
-
-      if (seasonItems.length === 0) {
-        playErrorBeep();
-        const validSeasons = [...new Set(items.map(i => i.season))].filter(Boolean);
-        setBayResult({
-          type: 'wrong_season',
-          barcode: cleanBarcode,
-          productName: items[0].product_name,
-          validSeasons
-        });
-        return;
-      }
-
-      const matchedItem = seasonItems.find(item => item.store_sizes.includes(activeStoreSize));
-
-      if (matchedItem) {
-        setBayResult({
-          type: 'success',
-          barcode: cleanBarcode,
-          productName: matchedItem.product_name,
-          bayNumber: matchedItem.bay_number,
-        });
+      
+      if (seasonItems.length > 0) {
+        const matchedItem = seasonItems.find(i => i.store_sizes.includes(activeStoreSize)) || seasonItems[0];
         
-        // TRACKING: Log it by product_code so ANY barcode clears it
-        const trackingCode = matchedItem.product_code || cleanBarcode;
-        if (storeId && !scannedBarcodes.includes(trackingCode)) {
-          setScannedBarcodes(prev => [...prev, trackingCode]);
-          safeSupabaseExecute(supabase, 'store_season_scans', 'INSERT', { 
-            store_id: storeId, 
-            season: season, 
-            barcode: trackingCode,
-            staff_name: activeStaff?.name || 'Unknown' 
-          }).then(({error: insertErr}) => {
-            if(insertErr) console.error("Failed to log scan:", insertErr);
-          });
+        if (matchedItem.store_sizes.includes(activeStoreSize)) {
+          setBayResult({ type: 'success', bayNumber: matchedItem.bay_number, barcode: cleanBarcode, productName: matchedItem.product_name, isOfflineFallback: isOffline });
+          
+          const trackingCode = matchedItem.product_code || cleanBarcode;
+          if (storeId && !scannedBarcodes.includes(trackingCode)) {
+            setScannedBarcodes(prev => [...prev, trackingCode]);
+            safeSupabaseExecute(supabase, 'store_season_scans', 'INSERT', { 
+              store_id: storeId, 
+              season: season, 
+              barcode: trackingCode,
+              staff_name: activeStaff?.name || 'Unknown' 
+            }).then(({error: insertErr}) => {
+              if(insertErr) console.error("Failed to log scan:", insertErr);
+            });
+          }
+        } else {
+          playErrorBeep();
+          setBayResult({ type: 'wrong_size', barcode: cleanBarcode, productName: matchedItem.product_name, isOfflineFallback: isOffline });
         }
       } else {
         playErrorBeep();
-        setBayResult({
-          type: 'wrong_size',
-          barcode: cleanBarcode,
-          productName: seasonItems[0].product_name,
-          validSizes: seasonItems[0].store_sizes
-        });
+        const validSeasons = [...new Set(items.map(i => i.season))];
+        setBayResult({ type: 'wrong_season', barcode: cleanBarcode, validSeasons, productName: items[0].product_name, isOfflineFallback: isOffline });
       }
 
     } catch (err) {
