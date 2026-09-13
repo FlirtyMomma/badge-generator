@@ -53,10 +53,21 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
       }
     }
 
+    const scanConfig = {
+      fps: 20, 
+      qrbox: { width: 260, height: 160 },
+      aspectRatio: 1.777778,
+      videoConstraints: {
+        facingMode: { exact: "environment" },
+        width: { ideal: 1920, min: 1080 },
+        height: { ideal: 1080, min: 720 }
+      }
+    };
+
     try {
       await html5QrcodeRef.current.start(
         { facingMode: { exact: "environment" } },
-        { fps: 20, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
+        scanConfig,
         onScanSuccess,
         () => {}
       );
@@ -66,7 +77,12 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },
-          { fps: 15, disableFlip: false, qrbox: { width: 260, height: 160 }, aspectRatio: 1.777778 },
+          { 
+            fps: 15, 
+            disableFlip: false, 
+            qrbox: { width: 260, height: 160 }, 
+            aspectRatio: 1.777778 
+          },
           onScanSuccess,
           () => {}
         );
@@ -183,7 +199,7 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
             <div className="space-y-4">
               
               {/* Camera Scanner View */}
-              <div className={`relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner min-h-[200px] flex items-center justify-center ${cameraError ? 'hidden' : ''}`}>
+              <div className={`relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner h-[250px] w-full flex items-center justify-center ${cameraError ? 'hidden' : ''}`}>
                 <div id="badge-reader" className="w-full absolute inset-0"></div>
                 {!isScanning && !cameraError && (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-20 p-4 text-center">

@@ -384,7 +384,7 @@ export default function ScanPanel({
 
   return (
     <div className="space-y-4">
-      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner min-h-[250px] flex items-center justify-center">
+      <div className="relative bg-black rounded-xl overflow-hidden border border-gray-200 shadow-inner h-[250px] w-full flex items-center justify-center">
         <div id="reader" className="w-full absolute inset-0"></div>
         
         {isScanning && !uiPaused && (
