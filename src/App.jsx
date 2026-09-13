@@ -35,10 +35,22 @@ function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
   const [storeId, setStoreId] = useState('');
   const [storeSize, setStoreSize] = useState('A');
+  const [appSeasons, setAppSeasons] = useState(["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"]); // Default fallback
   const [activeStaff, setActiveStaff] = useState(() => {
     const saved = sessionStorage.getItem('ob_active_staff');
     return saved ? JSON.parse(saved) : null;
   });
+
+  const fetchSeasons = async () => {
+    const { data, error } = await supabase.from('app_seasons').select('name').order('created_at');
+    if (!error && data && data.length > 0) {
+      setAppSeasons(data.map(s => s.name));
+    }
+  };
+
+  useEffect(() => {
+    fetchSeasons();
+  }, []);
 
   useEffect(() => {
     if (activeStaff) {
@@ -406,21 +418,30 @@ function App() {
               <Route path="/stock-take" element={
                 session ? <StoreStockTakeList session={session} /> : <Navigate to="/login" />
               } />
+
+              <Route path="/vault" element={
+                <LegacyStoreCount 
+                  session={session} 
+                  activeStaff={activeStaff}
+                  mode="legacy"
+                  seasons={appSeasons}
+                />
+              } />
               
               <Route path="/admin" element={
-                session && isSystemAdmin ? <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} /> : <Navigate to="/" />
+                session && isSystemAdmin ? <DbMaster isParsing={isParsing} setIsParsing={setIsParsing} isSystemAdmin={isSystemAdmin} seasons={appSeasons} /> : <Navigate to="/" />
               } />
               
               <Route path="/history" element={
                 session ? <TransferHistory storeId={storeId} isSystemAdmin={isSystemAdmin} /> : <Navigate to="/login" />
               } />
               
-              <Route path="/bay-finder" element={<BayFinder storeId={storeId} storeSize={storeSize} activeStaff={activeStaff} />} />
+              <Route path="/bay-finder" element={<BayFinder storeId={storeId} storeSize={storeSize} activeStaff={activeStaff} seasons={appSeasons} />} />
               <Route path="/season-prep" element={
-                session ? <SeasonPrep session={session} storeSize={storeSize} /> : <Navigate to="/login" />
+                session ? <SeasonPrep session={session} storeSize={storeSize} seasons={appSeasons} /> : <Navigate to="/login" />
               } />
               <Route path="/admin/planograms" element={
-                session && isSystemAdmin ? <AdminPlanogramManager /> : <Navigate to="/" />
+                session && isSystemAdmin ? <AdminPlanogramManager seasons={appSeasons} /> : <Navigate to="/" />
               } />
             </Routes>
           </Suspense>

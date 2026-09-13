@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { toast } from 'react-hot-toast';
 import { safeSupabaseExecute } from '../lib/offlineSync';
 
-export default function LegacyStoreCount({ 
+export default function LegacyStoreCount({ seasons = [], 
   mode, 
   session,
   activeStaff, 
@@ -31,7 +31,7 @@ export default function LegacyStoreCount({
   const [viewPallet, setViewPallet] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const seasonsList = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
+  const seasonsList = seasons;
 
   const playSuccessBeep = () => {
     try {

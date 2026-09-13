@@ -5,13 +5,12 @@ import { supabase } from '../supabaseClient';
 import { safeSupabaseExecute } from '../lib/offlineSync';
 
 const STORE_SIZES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', activeStaff }) {
+export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', activeStaff, seasons = [] }) {
   const [localStoreSize, setLocalStoreSize] = useState(() => localStorage.getItem('onebeyond_store_size') || 'A');
   const activeStoreSize = storeId ? adminStoreSize : localStoreSize;
 
-  const [season, setSeason] = useState(() => localStorage.getItem('onebeyond_bayfinder_season') || SEASONS[0]);
+  const [season, setSeason] = useState(() => localStorage.getItem('onebeyond_bayfinder_season') || seasons[0] || 'Xmas');
   const [manualBarcode, setManualBarcode] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [uiPaused, setUiPaused] = useState(false);
@@ -300,13 +299,13 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
           <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200 text-left grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-black uppercase text-[#004aad] mb-1">Target Season</label>
-              <select 
-                value={season} 
-                onChange={(e) => setSeason(e.target.value)} 
-                className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-800 outline-none focus:border-[#004aad]"
-              >
-                {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+                <select 
+                  value={season} 
+                  onChange={(e) => setSeason(e.target.value)} 
+                  className="w-full border p-2 rounded bg-white text-xs font-bold text-gray-800 outline-none focus:border-[#004aad]"
+                >
+                  {seasons.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
             </div>
             {!storeId && (
               <div>

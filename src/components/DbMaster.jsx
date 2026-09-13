@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import AdminNetworkDashboard from './AdminNetworkDashboard';
+import AdminSeasonManager from './AdminSeasonManager';
 
-export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
+export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin, seasons = [] }) {
   const [fileSelected, setFileSelected] = useState(false);
   const [csvData, setCsvData] = useState([]);
   
@@ -241,7 +242,8 @@ export default function DbMaster({ isParsing, setIsParsing, isSystemAdmin }) {
         </table>
       </div>
 
-      <AdminNetworkDashboard />
+      <AdminSeasonManager />
+      <AdminNetworkDashboard seasons={seasons} />
 
       {/* Sub-Panel 2: Weekly Catalogue File Processor */}
       <div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50 space-y-3 shadow-xs">

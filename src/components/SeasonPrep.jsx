@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { toast } from 'react-hot-toast';
 
-const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
+
 const STORE_SIZES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
-export default function SeasonPrep({ session, storeSize }) {
-  const [season, setSeason] = useState(() => localStorage.getItem('onebeyond_bayfinder_season') || SEASONS[0]);
+export default function SeasonPrep({ session, storeSize, seasons = [] }) {
+  const [season, setSeason] = useState(() => localStorage.getItem('onebeyond_bayfinder_season') || (seasons[0] || 'Xmas'));
   
   const [isLoading, setIsLoading] = useState(false);
   const [planogramItems, setPlanogramItems] = useState([]);
@@ -115,7 +115,7 @@ export default function SeasonPrep({ session, storeSize }) {
               onChange={e => setSeason(e.target.value)}
               className="w-full border p-3 rounded-lg font-bold text-gray-700 outline-none focus:border-[#004aad] bg-gray-50"
             >
-              {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
+              {seasons.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="flex-1">

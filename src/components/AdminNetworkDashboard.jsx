@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
-const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
-
-export default function AdminNetworkDashboard() {
-  const [season, setSeason] = useState('Mothers Day');
+export default function AdminNetworkDashboard({ seasons = [] }) {
+  const [season, setSeason] = useState(seasons[0] || 'Mothers Day');
   const [metrics, setMetrics] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -62,7 +60,7 @@ export default function AdminNetworkDashboard() {
           onChange={(e) => setSeason(e.target.value)}
           className="bg-white border rounded text-xs font-bold p-1 outline-none focus:border-[#004aad]"
         >
-          {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
+          {seasons.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
 

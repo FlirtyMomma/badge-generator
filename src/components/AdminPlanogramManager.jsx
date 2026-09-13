@@ -3,19 +3,28 @@ import { supabase } from '../supabaseClient';
 import { toast } from 'react-hot-toast';
 
 const STORE_SIZES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-const SEASONS = ["Mothers Day", "Fathers Day", "Easter", "Halloween", "Xmas", "Garden", "Summer"];
 
-export default function AdminPlanogramManager() {
+export default function AdminPlanogramManager({ seasons = [] }) {
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [codePrefix, setCodePrefix] = useState('');
+  const [codePrefix, setCodePrefix] = useState(() => localStorage.getItem('ob_admin_plano_prefix') || '');
   const [productCode, setProductCode] = useState('');
   const [resolvedBarcode, setResolvedBarcode] = useState('');
   const [productName, setProductName] = useState('');
-  const [bayNumber, setBayNumber] = useState('');
-  const [season, setSeason] = useState(SEASONS[0]);
-  const [selectedSizes, setSelectedSizes] = useState(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']);
+  const [bayNumber, setBayNumber] = useState(() => localStorage.getItem('ob_admin_plano_bay') || '');
+  const [season, setSeason] = useState(() => localStorage.getItem('ob_admin_plano_season') || seasons[0] || 'Xmas');
+  const [selectedSizes, setSelectedSizes] = useState(() => {
+    const saved = localStorage.getItem('ob_admin_plano_sizes');
+    return saved ? JSON.parse(saved) : STORE_SIZES;
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('ob_admin_plano_prefix', codePrefix);
+    localStorage.setItem('ob_admin_plano_bay', bayNumber);
+    localStorage.setItem('ob_admin_plano_season', season);
+    localStorage.setItem('ob_admin_plano_sizes', JSON.stringify(selectedSizes));
+  }, [codePrefix, bayNumber, season, selectedSizes]);
   
   const [editingId, setEditingId] = useState(null);
   
@@ -102,7 +111,7 @@ export default function AdminPlanogramManager() {
     setResolvedBarcode(item.barcode);
     setProductName(item.product_name);
     setBayNumber(item.bay_number);
-    setSeason(item.season || SEASONS[0]);
+    setSeason(item.season || seasons[0]);
     setSelectedSizes(item.store_sizes || []);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -180,7 +189,7 @@ export default function AdminPlanogramManager() {
         <span className="text-sm font-bold text-gray-800">Clear an entire season?</span>
         <p className="text-[10px] text-gray-500">This will permanently delete all bay assignments for the selected season.</p>
         <select id="clear-season-select" className="border p-2 rounded text-xs font-bold" defaultValue={season}>
-          {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
+          {seasons.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <div className="flex gap-2 justify-center mt-2">
           <button 
@@ -242,12 +251,12 @@ export default function AdminPlanogramManager() {
   };
 
   const filteredItems = items.filter(item => {
+    if ((item.season || seasons[0]) !== season) return false;
     const q = searchQuery.toLowerCase();
     return (item.product_code || '').toLowerCase().includes(q) || 
            item.barcode.includes(q) || 
            (item.product_name || '').toLowerCase().includes(q) || 
-           item.bay_number.toLowerCase().includes(q) ||
-           (item.season || '').toLowerCase().includes(q);
+           item.bay_number.toLowerCase().includes(q);
   });
 
   return (
@@ -373,7 +382,7 @@ export default function AdminPlanogramManager() {
               onChange={e => setSeason(e.target.value)}
               className="w-full border p-2 rounded-lg bg-gray-50 text-sm font-bold focus:border-[#004aad] outline-none transition-colors"
             >
-              {SEASONS.map(s => <option key={s} value={s}>{s}</option>)}
+              {seasons.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
@@ -417,7 +426,7 @@ export default function AdminPlanogramManager() {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Active Assignments</h3>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">{items.length} items mapped</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase">{filteredItems.length} items mapped in {season}</p>
               </div>
               <button 
                 onClick={confirmClearSeason}
