@@ -14,7 +14,7 @@ export default function LegacyStoreCount({ seasons = [],
   setActivePrintSeason,
   setActivePrintPallet 
 }) {
-  const [season, setSeason] = useState(seasons[0] || 'Mothers Day');
+  const [season, setSeason] = useState(() => localStorage.getItem('ob_legacy_scan_season') || seasons[0] || 'Mothers Day');
   const [pallet, setPallet] = useState(() => localStorage.getItem(`onebeyond_last_pallet_${session?.user.id}`) || '1');
   const [quantity, setQuantity] = useState('1');
   const [manualBarcode, setManualBarcode] = useState('');
@@ -27,8 +27,8 @@ export default function LegacyStoreCount({ seasons = [],
   const [sessionList, setSessionList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [viewSeason, setViewSeason] = useState(seasons[0] || 'Mothers Day');
-  const [viewPallet, setViewPallet] = useState('All');
+  const [viewSeason, setViewSeason] = useState(() => localStorage.getItem('ob_legacy_view_season') || seasons[0] || 'Mothers Day');
+  const [viewPallet, setViewPallet] = useState(() => localStorage.getItem('ob_legacy_view_pallet') || 'All');
   const [searchQuery, setSearchQuery] = useState('');
 
   const seasonsList = seasons;
@@ -170,7 +170,10 @@ export default function LegacyStoreCount({ seasons = [],
 
   useEffect(() => {
     if (session) localStorage.setItem(`onebeyond_last_pallet_${session.user.id}`, pallet);
-  }, [pallet, session]);
+    localStorage.setItem('ob_legacy_scan_season', season);
+    localStorage.setItem('ob_legacy_view_season', viewSeason);
+    localStorage.setItem('ob_legacy_view_pallet', viewPallet);
+  }, [pallet, session, season, viewSeason, viewPallet]);
 
   const startCamera = async () => {
     setCameraError(false); 
