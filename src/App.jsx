@@ -117,7 +117,7 @@ function App() {
   const [activePrintPallet, setActivePrintPallet] = useState('All');
 
   const [staff, setStaff] = useState([]);
-  const [form, setForm] = useState({ name: '', position: '', code: '' });
+  const [form, setForm] = useState({ name: '', position: 'Sales Assistant', code: '', pin: '' });
   const [editingId, setEditingId] = useState(null);
 
   const [savedProducts, setSavedProducts] = useState(() => {
@@ -411,6 +411,7 @@ function App() {
                     setScannedProduct={setScannedProduct} 
                     setActivePrintSeason={setActivePrintSeason} 
                     setActivePrintPallet={setActivePrintPallet} 
+                    seasons={appSeasons}
                   />
                 ) : <Navigate to="/login" />
               } />

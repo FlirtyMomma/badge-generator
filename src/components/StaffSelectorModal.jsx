@@ -137,11 +137,11 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
 
   const handlePinSubmit = (e) => {
     e.preventDefault();
-    if (pinInput === pinMode.code) {
+    if (pinInput === pinMode.code || (pinMode.pin && pinInput === pinMode.pin)) {
       stopCamera();
       onSelectStaff(pinMode);
     } else {
-      setError('Incorrect badge code');
+      setError('Incorrect badge code or PIN');
       setPinInput('');
     }
   };
@@ -226,7 +226,7 @@ export default function StaffSelectorModal({ staffList, onSelectStaff }) {
                   <input
                     type="password"
                     autoFocus
-                    placeholder="Enter Badge Code"
+                    placeholder="Enter Badge Code or PIN"
                     value={pinInput}
                     onChange={(e) => setPinInput(e.target.value)}
                     className="w-full text-center text-xl font-black border-2 border-gray-200 rounded-xl p-3 outline-none focus:border-[#004aad]"

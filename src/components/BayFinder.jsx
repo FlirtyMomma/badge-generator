@@ -25,6 +25,12 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
   const html5QrcodeRef = useRef(null);
 
   useEffect(() => {
+    if (seasons.length > 0 && !seasons.includes(season)) {
+      setSeason(seasons[0]);
+    }
+  }, [seasons, season]);
+
+  useEffect(() => {
     if (!storeId) localStorage.setItem('onebeyond_store_size', activeStoreSize);
     localStorage.setItem('onebeyond_bayfinder_season', season);
     if (storeId) {

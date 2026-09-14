@@ -7,6 +7,12 @@ export default function AdminNetworkDashboard({ seasons = [] }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (seasons.length > 0 && !seasons.includes(season)) {
+      setSeason(seasons[0]);
+    }
+  }, [seasons, season]);
+
+  useEffect(() => {
     fetchMetrics();
   }, [season]);
 

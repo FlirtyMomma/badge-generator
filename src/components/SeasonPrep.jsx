@@ -15,6 +15,12 @@ export default function SeasonPrep({ session, storeSize, seasons = [] }) {
   const [filter, setFilter] = useState('all'); // 'all', 'missing', 'have'
 
   useEffect(() => {
+    if (seasons.length > 0 && !seasons.includes(season)) {
+      setSeason(seasons[0]);
+    }
+  }, [seasons, season]);
+
+  useEffect(() => {
     localStorage.setItem('onebeyond_bayfinder_season', season);
     fetchData();
   }, [storeSize, season, session]);

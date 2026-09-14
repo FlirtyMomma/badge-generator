@@ -18,6 +18,12 @@ export default function BadgeBuilder({
   const handlePrint = useReactToPrint({
     contentRef,
     documentTitle: "OneBeyond_Staff_Badges_Sheet",
+    pageStyle: `
+      @page {
+        size: A4 portrait;
+        margin: 15mm;
+      }
+    `
   });
 
   const handleSubmit = async (e) => {
@@ -28,7 +34,8 @@ export default function BadgeBuilder({
       const { error } = await supabase.from('store_staff').update({
         name: form.name,
         position: form.position || 'Sales Assistant',
-        code: form.code
+        code: form.code,
+        pin: form.pin || null
       }).eq('id', editingId);
       
       if (!error) {
@@ -42,7 +49,8 @@ export default function BadgeBuilder({
         user_id: session.user.id,
         name: form.name,
         position: form.position || 'Sales Assistant',
-        code: form.code
+        code: form.code,
+        pin: form.pin || null
       };
       const { data, error } = await supabase.from('store_staff').insert([newBadge]).select().single();
       
@@ -52,7 +60,7 @@ export default function BadgeBuilder({
         alert('Failed to save badge.');
       }
     }
-    setForm({ name: '', position: 'Sales Assistant', code: '' });
+    setForm({ name: '', position: 'Sales Assistant', code: '', pin: '' });
   };
 
   const handleDelete = async (id) => {
@@ -66,7 +74,7 @@ export default function BadgeBuilder({
 
   const startEdit = (person) => {
     setEditingId(person.id);
-    setForm({ name: person.name, position: person.position, code: person.code });
+    setForm({ name: person.name, position: person.position, code: person.code, pin: person.pin || '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -101,7 +109,10 @@ export default function BadgeBuilder({
             <option value="Supervisor">Supervisor</option>
             <option value="Sales Assistant">Sales Assistant</option>
           </select>
-          <input className="w-full border p-3 rounded-lg text-sm font-mono outline-none focus:border-blue-500" placeholder="Till Access Code" value={form.code} onChange={e => setForm({...form, code: e.target.value})} />
+          <div className="flex gap-2">
+            <input className="w-2/3 border p-3 rounded-lg text-sm font-mono outline-none focus:border-blue-500" placeholder="Till Access Code" value={form.code} onChange={e => setForm({...form, code: e.target.value})} />
+            <input className="w-1/3 border p-3 rounded-lg text-sm font-mono outline-none focus:border-blue-500 text-center" placeholder="App PIN (Optional)" value={form.pin || ''} onChange={e => setForm({...form, pin: e.target.value})} maxLength={6} />
+          </div>
           <button type="submit" className={`w-full text-white py-3 rounded-lg font-bold shadow-md transition-all ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#004aad] hover:bg-blue-800'}`}>
             {editingId ? 'Update Badge Configuration' : 'Add to Printable Sheet'}
           </button>
@@ -116,10 +127,11 @@ export default function BadgeBuilder({
         <div className="hidden">
           <div 
             ref={contentRef} 
-            className="print:grid bg-white p-[10mm] w-[210mm] min-w-[210mm] min-h-[297mm] grid grid-cols-2 gap-x-[10mm] gap-y-[8mm] justify-items-center content-start text-black fixed inset-0 z-[999999]"
+            className="print:flex bg-white flex flex-wrap justify-center content-start text-black"
           >
+            {/* The transparent top border acts as a guaranteed top-margin for every page, bypassing browser print margin settings */}
             {staff.map((person) => (
-              <div key={person.id} className="relative flex justify-center w-[85mm] h-[55mm] break-inside-avoid">
+              <div key={person.id} className="relative flex justify-center w-[85mm] break-inside-avoid border-t-[15mm] border-transparent mx-[5mm]">
                 <Badge {...person} />
               </div>
             ))}

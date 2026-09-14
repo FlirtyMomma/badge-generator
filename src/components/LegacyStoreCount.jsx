@@ -14,7 +14,7 @@ export default function LegacyStoreCount({ seasons = [],
   setActivePrintSeason,
   setActivePrintPallet 
 }) {
-  const [season, setSeason] = useState('Mothers Day');
+  const [season, setSeason] = useState(seasons[0] || 'Mothers Day');
   const [pallet, setPallet] = useState(() => localStorage.getItem(`onebeyond_last_pallet_${session?.user.id}`) || '1');
   const [quantity, setQuantity] = useState('1');
   const [manualBarcode, setManualBarcode] = useState('');
@@ -27,11 +27,18 @@ export default function LegacyStoreCount({ seasons = [],
   const [sessionList, setSessionList] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [viewSeason, setViewSeason] = useState('Mothers Day');
+  const [viewSeason, setViewSeason] = useState(seasons[0] || 'Mothers Day');
   const [viewPallet, setViewPallet] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   const seasonsList = seasons;
+
+  useEffect(() => {
+    if (seasonsList.length > 0) {
+      if (!seasonsList.includes(season)) setSeason(seasonsList[0]);
+      if (!seasonsList.includes(viewSeason)) setViewSeason(seasonsList[0]);
+    }
+  }, [seasonsList, season, viewSeason]);
 
   const playSuccessBeep = () => {
     try {

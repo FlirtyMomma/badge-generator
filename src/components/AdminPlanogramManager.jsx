@@ -28,6 +28,12 @@ export default function AdminPlanogramManager({ seasons = [] }) {
   
   const [editingId, setEditingId] = useState(null);
   
+  useEffect(() => {
+    if (seasons.length > 0 && !seasons.includes(season)) {
+      setSeason(seasons[0]);
+    }
+  }, [seasons, season]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
