@@ -238,7 +238,11 @@ export default function BayFinder({ storeId, storeSize: adminStoreSize = 'A', ac
       await html5QrcodeRef.current.start({ facingMode: { exact: "environment" } }, scanConfig, lookupBay, () => {});
       setIsScanning(true);
     } catch (err) {
-      console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
+      console.warn("Camera strict start failed:", err);
+      if (!html5QrcodeRef.current) {
+        setCameraError(true);
+        return;
+      }
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },

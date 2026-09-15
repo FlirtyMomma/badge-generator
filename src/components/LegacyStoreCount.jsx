@@ -201,6 +201,10 @@ export default function LegacyStoreCount({ seasons = [],
       setIsScanning(true);
     } catch (err) {
       console.warn("Strict environment lock rejected, attempting relaxed browser fallback:", err);
+      if (!html5QrcodeRef.current) {
+        setCameraError(true);
+        return;
+      }
       try {
         await html5QrcodeRef.current.start(
           { facingMode: "environment" },
