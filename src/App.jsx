@@ -20,6 +20,7 @@ const TransferHistory = lazy(() => import('./components/TransferHistory'));
 const BayFinder = lazy(() => import('./components/BayFinder'));
 const AdminPlanogramManager = lazy(() => import('./components/AdminPlanogramManager'));
 const SeasonPrep = lazy(() => import('./components/SeasonPrep'));
+const ActionDashboard = lazy(() => import('./components/ActionDashboard'));
 
 function App() {
   const navigate = useNavigate();
@@ -438,6 +439,9 @@ function App() {
               } />
               
               <Route path="/bay-finder" element={<BayFinder storeId={storeId} storeSize={storeSize} activeStaff={activeStaff} seasons={appSeasons} />} />
+              <Route path="/dashboard" element={
+                session ? <ActionDashboard storeId={storeId} /> : <Navigate to="/login" />
+              } />
               <Route path="/season-prep" element={
                 session ? <SeasonPrep session={session} storeSize={storeSize} seasons={appSeasons} /> : <Navigate to="/login" />
               } />
